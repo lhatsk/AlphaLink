@@ -118,21 +118,8 @@ class OpenFoldSingleDataset(torch.utils.data.Dataset):
             self.combined_mapping[i] = target.split('.')[0] + "_" + xl.split('.')[0]
             self._chain_ids.append(target)
 
-            print(len(self._chain_id_to_idx_dict), len(self.crosslinks), len(self.combined_mapping))
+#            print(len(self._chain_id_to_idx_dict), len(self.crosslinks), len(self.combined_mapping))
 
-        # print(self._chain_id_to_idx_dict, self.crosslinks)
-
-        # if(alignment_index is not None):
-        #     self._chain_ids = list(alignment_index.keys())
-        # elif(mapping_path is None):
-        #     self._chain_ids = list(os.listdir(alignment_dir))
-        # else:
-        #     with open(mapping_path, "r") as f:
-        #         self._chain_ids = [l.strip() for l in f.readlines()]
-       
-        # self._chain_id_to_idx_dict = {
-        #     chain: i for i, chain in enumerate(self._chain_ids)
-        # }
 
         template_featurizer = templates.TemplateHitFeaturizer(
             mmcif_dir=template_mmcif_dir,
@@ -245,15 +232,8 @@ class OpenFoldSingleDataset(torch.utils.data.Dataset):
                 )
         else:
             data = pickle.load(open('%s/%s' % (self.feature_dir, name),'rb'))
-            # data = pickle.load(open('%s/%s.pkl' % (self.feature_dir, name),'rb'))
-            # msa = data['msa'][:1]
-            # # msa = subsample_msa(msa)
-            # # msa = subsample_msa_random(msa)
-            # msa = subsample_msa_sequentially(msa)
-            # data['msa'] = msa
             seq = np.array(list(data['sequence'][0].decode("utf-8")))
             seq_length = data['seq_length'][0]
-            # if idx in self.crosslinks:
             xl = self.crosslinks[idx]
             if self.mode == 'train':
                 tp = xl['tp']
@@ -262,30 +242,10 @@ class OpenFoldSingleDataset(torch.utils.data.Dataset):
             else:
                 xl_grouping = xl['grouping']
                 real = xl['real']
-                # unambiguous = ((xl['unambiguous'] != 1)[:,:,None])
                 xl = xl['xl']
                 
-                # xl_grouping[unambiguous] = 0
-                # print("before",np.sum(xl > 0) // 2)
-                # xl[unambiguous] = 0
-                # print("after",np.sum(xl > 0) // 2)
-            # else:
-            #     xl = np.zeros((seq_length, seq_length, 1))
-            #     xl_grouping = np.zeros((seq_length, seq_length, 1))
-            #     real = np.zeros((seq_length, seq_length, 1))
-
-            # if self.mode == 'train' or self.mode == 'eval':
-            #     logits = self.logits[idx]
-            #     data['masked_msa_logits'] = logits['masked_msa_logits']
-            #     data['experimentally_resolved_logits'] = logits['experimentally_resolved_logits']
-            #     data['distogram_logits'] = logits['distogram_logits']
-
-#            xl_grouping[real != 1] = 0
-#            real = real[:,:,None]
-#            xl[real != 1] = 0
-
             data['xl'] = xl
-            data['xl_grouping'] = xl_grouping #np.zeros_like(xl_grouping)
+            data['xl_grouping'] = xl_grouping
 
 
         if(self._output_raw):

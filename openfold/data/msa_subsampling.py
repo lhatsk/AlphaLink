@@ -3,6 +3,8 @@ import numpy as np
 import math
 from scipy.spatial.distance import pdist, squareform
 
+# adapted from: https://github.com/sokrypton/GREMLIN_CPP
+
 def get_eff(msa, eff_cutoff=0.8): # eff_cutoff=0.62 for metapsicov
     if msa.ndim == 3: msa = msa.argmax(-1)    
     # pairwise identity  
@@ -13,7 +15,7 @@ def get_eff(msa, eff_cutoff=0.8): # eff_cutoff=0.62 for metapsicov
 
     return msa_w
 
-def subsample_msa(msa, neff=10, eff_cutoff=0.8):
+def subsample_msa(msa, neff=10, eff_cutoff=0.8, cap_msa=True):
     if msa.shape[0] == 1:
         return msa
 
@@ -34,15 +36,19 @@ def subsample_msa(msa, neff=10, eff_cutoff=0.8):
     msa = msa[idx]
     
     for i, w in enumerate(weights):
-        # print(w+current_neff, neff, w)
-        if w + current_neff > neff or i > 126:
-            break
+        if cap_msa:
+            if w + current_neff > neff or i > 126:
+                break
+        else:
+            if w + current_neff > neff:
+                break           
         pick.append(msa[i])
         current_neff += w
         
     return np.array(pick)
 
-def subsample_msa_sequentially(msa, neff=10, eff_cutoff=0.8):
+# if cap_msa is enabled, we bypass the ExtraMSAStack, helps with determinism for |MSA| < 128
+def subsample_msa_sequentially(msa, neff=10, eff_cutoff=0.8, cap_msa=True):
     if msa.shape[0] == 1:
         return msa
     
@@ -57,10 +63,15 @@ def subsample_msa_sequentially(msa, neff=10, eff_cutoff=0.8):
     for m in msa:
         new.append(m)
         neff_ = get_eff(np.array(new), eff_cutoff=eff_cutoff).sum()
-        # print(neff_, len(new))
-        if neff_ > neff or len(new) > 126:
-            new.pop()
-            break
+        
+        if cap_msa:
+            if neff_ > neff or len(new) > 126:
+                new.pop()
+                break
+        else:
+            if neff_ > neff:
+                new.pop()
+                break
             
     return np.array(new)
 

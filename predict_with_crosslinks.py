@@ -64,6 +64,7 @@ from openfold.utils.trace_utils import (
 )
 from scripts.utils import add_data_args
 
+from openfold.data.msa_subsampling import subsample_msa_sequentially
 
 TRACING_INTERVAL = 50
 
@@ -411,6 +412,13 @@ def main(args):
     feature_dict['xl'] = crosslinks
     feature_dict['xl_grouping'] = grouping
 
+    # subsample MSAs to specified Neff
+    msa = feature_dict['msa']
+    logger.info(
+        f"Subsampling MSA to Neff={args.neff}..."
+    )
+    msa = subsample_msa_sequentially(msa, neff=args.neff)
+    feature_dict['msa'] = msa
 
 
     processed_feature_dict = feature_processor.process_features(
@@ -564,6 +572,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--multimer_ri_gap", type=int, default=200,
         help="""Residue index offset between multiple sequences, if provided"""
+    )
+    parser.add_argument(
+        "--neff", type=float, default=10,
+        help="""MSAs are subsampled to specified Neff"""
     )
     parser.add_argument(
         "--trace_model", action="store_true", default=False,
