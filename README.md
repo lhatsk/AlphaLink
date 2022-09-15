@@ -4,14 +4,23 @@ Code for Paper AlphaLink: bringing protein structure prediction in situ with in-
 
 AlphaLink extends [OpenFold](https://github.com/aqlaboratory/openfold) with crosslinking data.
 
-
 ## Installation
 
 Please refer to the [OpenFold GitHub](https://github.com/aqlaboratory/openfold).
 
+## Crosslinking data
+
+AlphaLink expects a csv with 2 or 3 columns with the following format:
+
+i j fdr (optional)
+
+The indices i,j are 0-based.
+
 ## Usage
 
+python3 predict_with_crosslinks.py 7K3N_A.fasta photoK.csv
 
+The script looks for pre-computed MSAs in the alignments/ folder. 
 
 ## Copyright notice
 
