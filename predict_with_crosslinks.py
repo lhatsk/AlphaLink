@@ -64,7 +64,7 @@ from openfold.utils.trace_utils import (
 )
 from scripts.utils import add_data_args
 
-from openfold.data.msa_subsampling import subsample_msa_sequentially
+from openfold.data.msa_subsampling import subsample_msa_sequentially, get_eff
 
 TRACING_INTERVAL = 50
 
@@ -407,19 +407,17 @@ def main(args):
 
     crosslinks, grouping = load_crosslinks(args.crosslinks, args.fdr, seq)
 
-    feature_dict = pickle.load(open('/scratch/kstahl/test_sets/trrosetta_af/nsp1/neff10/7K3N_A_0.pkl','rb'))
-
     feature_dict['xl'] = crosslinks
     feature_dict['xl_grouping'] = grouping
 
     # subsample MSAs to specified Neff
     msa = feature_dict['msa']
+
     logger.info(
         f"Subsampling MSA to Neff={args.neff}..."
     )
-    msa = subsample_msa_sequentially(msa, neff=args.neff)
+    # msa = subsample_msa_sequentially(msa, neff=args.neff)
     feature_dict['msa'] = msa
-
 
     processed_feature_dict = feature_processor.process_features(
         feature_dict, mode='predict',
@@ -529,7 +527,7 @@ if __name__ == "__main__":
         help="""Name of the directory in which to output the prediction""",
     )
     parser.add_argument(
-        "--model_device", type=str, default="cpu",
+        "--model_device", type=str, default="cuda:0",
         help="""Name of the device on which to run the model. Any valid torch
              device name is accepted (e.g. "cpu", "cuda:0")"""
     )

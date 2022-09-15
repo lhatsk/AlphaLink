@@ -24,7 +24,7 @@ replaces the original, more restrictive CC BY-NC 4.0 license as of January 2022.
 
 ## Citing this work
 
-For now, cite OpenFold as follows:
+<!-- For now, cite OpenFold as follows: -->
 
 <!-- ```bibtex
 @software{Ahdritz_OpenFold_2021,

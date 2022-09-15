@@ -271,7 +271,7 @@ config = mlc.ConfigDict(
             "predict": {
                 "fixed_size": True,
                 "subsample_templates": False,  # We want top templates.
-                "masked_msa_replace_fraction": 0.0,#15,
+                "masked_msa_replace_fraction": 0.15,
                 "max_msa_clusters": 512,
                 "max_extra_msa": 1024,
                 "max_template_hits": 4,
