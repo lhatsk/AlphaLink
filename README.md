@@ -13,14 +13,18 @@ Please refer to the [OpenFold GitHub](https://github.com/aqlaboratory/openfold).
 AlphaLink expects a csv with 2 or 3 columns with the following format:
 
 i j fdr (optional)
+128 163 0.95
+147 77 0.95
+147 41
+...
 
-The indices i,j are 0-based.
+The indices i,j are 0-based. fdr is between 0 and 1.
 
 ## Usage
 
-python3 predict_with_crosslinks.py 7K3N_A.fasta photoK.csv
+python3 predict_with_crosslinks.py 7K3N_A.fasta photoL.csv
 
-The script looks for pre-computed MSAs in the alignments/ folder. 
+The script looks for matching pre-computed MSAs in the alignments/ folder. 
 
 ## Copyright notice
 
