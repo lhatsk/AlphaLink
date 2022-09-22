@@ -10,14 +10,12 @@ Please refer to the [OpenFold GitHub](https://github.com/aqlaboratory/openfold).
 
 ## Crosslinking data
 
-AlphaLink expects a csv with 2 or 3 columns with the following format:
+AlphaLink expects a csv with 2 or 3 columns: i j fdr (optional)
 
 ```
-i j fdr (optional)
 128 163 0.95
 147 77 0.95
-147 41
-...
+147 41 0.95
 ```
 
 The indices i,j are 0-based. fdr is between 0 and 1.
@@ -26,7 +24,7 @@ The indices i,j are 0-based. fdr is between 0 and 1.
 
 python3 predict_with_crosslinks.py 7K3N_A.fasta photoL.csv
 
-The script looks for matching pre-computed MSAs in the alignments/ folder. 
+MSAs are generated from scratch. This step can be skipped by placing matching pre-computed MSAs in the alignments/ folder.
 
 ## Copyright notice
 
