@@ -22,7 +22,7 @@ The indices i,j are 0-based. fdr is between 0 and 1.
 
 ## Usage
 
-AlphaLink expects a single sequence FASTA file.
+AlphaLink expects a FASTA file containing a single sequence.
 
 ```
 python3 predict_with_crosslinks.py 7K3N_A.fasta photoL.csv
