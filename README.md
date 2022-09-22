@@ -12,11 +12,13 @@ Please refer to the [OpenFold GitHub](https://github.com/aqlaboratory/openfold).
 
 AlphaLink expects a csv with 2 or 3 columns with the following format:
 
+```
 i j fdr (optional)
 128 163 0.95
 147 77 0.95
 147 41
 ...
+```
 
 The indices i,j are 0-based. fdr is between 0 and 1.
 
