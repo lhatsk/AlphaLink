@@ -26,7 +26,7 @@ The indices i,j are 0-based. fdr is between 0 and 1.
 python3 predict_with_crosslinks.py 7K3N_A.fasta photoL.csv
 ```
 
-Looks for matching pre-computed MSAs in the alignments/ folder. To generate MSAs from scratch, you need to supply the database paths [see also OpenFold Inference](https://github.com/aqlaboratory/openfold#inference) 
+Looks for matching pre-computed MSAs in the alignments/ folder. To generate MSAs from scratch, you need to supply the database paths, [see also OpenFold Inference](https://github.com/aqlaboratory/openfold#inference). 
 
 
 ```
@@ -38,9 +38,6 @@ python3 predict_with_crosslinks.py \
     --pdb70_database_path data/pdb70/pdb70 \
     --uniclust30_database_path data/uniclust30/uniclust30_2018_08/uniclust30_2018_08 
 ```
-
-
-MSAs are generated from scratch, paths to the required . This step can be skipped by placing matching pre-computed MSAs in the alignments/ folder.
 
 ## Copyright notice
 
