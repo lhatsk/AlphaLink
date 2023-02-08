@@ -294,15 +294,15 @@ def load_crosslinks(crosslink_csv, fdr, seq):
     
     if links.shape[1] == 3:
         for i_, (i,j,fdr) in enumerate(links):
-            i = int(i)
-            j = int(j)
+            i = int(i) - 1 
+            j = int(j) - 1
             crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
             grouping[i,j,0] = grouping[j,i,0] = groups[i_]
 
     else:
         for i_, (i,j) in enumerate(links):
-            i = int(i)
-            j = int(j)
+            i = int(i) - 1
+            j = int(j) - 1
             crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
             grouping[i,j,0] = grouping[j,i,0] = groups[i_]
     

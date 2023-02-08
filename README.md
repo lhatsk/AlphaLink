@@ -30,7 +30,7 @@ Crosslinking data can be included either as a PyTorch dictionary with NumPy arra
 147 41 0.05
 ```
 
-The indices i,j are 0-based. fdr is between 0 and 1.
+The indices i,j are 1-based. fdr is between 0 and 1.
 
 Distograms have shape LxLx128 with the following binning: torch.arange(2.3125,42,0.3125) and no group embedding. Last bin is a catch-all bin. The probabilities should sum up to 1. To use distograms, you have to set the distograms flag to True in config_crosslinks.py xl_embedder.
 
