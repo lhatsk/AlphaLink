@@ -1,4 +1,4 @@
-Code for Paper Modelling protein structures in situ with in-cell photo-crosslinking mass spectrometry and deep learning
+Code for Paper "Protein structure prediction with in-cell photo-crosslinking mass spectrometry and deep learning"
 
 # AlphaLink
 
