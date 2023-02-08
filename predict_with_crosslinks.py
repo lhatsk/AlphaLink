@@ -296,14 +296,14 @@ def load_crosslinks(crosslink_csv, fdr, seq):
         for i_, (i,j,fdr) in enumerate(links):
             i = int(i)
             j = int(j)
-            crosslinks[i,j,0] = crosslinks[j,i,0] = fdr
+            crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
             grouping[i,j,0] = grouping[j,i,0] = groups[i_]
 
     else:
         for i_, (i,j) in enumerate(links):
             i = int(i)
             j = int(j)
-            crosslinks[i,j,0] = crosslinks[j,i,0] = fdr
+            crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
             grouping[i,j,0] = grouping[j,i,0] = groups[i_]
     
     logger.info(
