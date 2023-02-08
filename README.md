@@ -39,13 +39,13 @@ Distograms have shape LxLx128 with the following binning: torch.arange(2.3125,42
 AlphaLink expects a FASTA file containing a single sequence, the crosslinks, and databases for template/ MSA search , [see also OpenFold Inference](https://github.com/aqlaboratory/openfold#inference).
 
 ```
-python3 predict_with_crosslinks.py --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt 7K3N_A.fasta photoL.csv uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
+python predict_with_crosslinks.py --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt 7K3N_A.fasta photoL.csv uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
 ```
 
 MSA generation can be skipped if there are precomputed alignments:
 
 ```
-python3 predict_with_crosslinks.py --use_precomputed_alignments msa/ --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt  7K3N_A.fasta photoL.csv uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
+python predict_with_crosslinks.py --use_precomputed_alignments msa/ --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt  7K3N_A.fasta photoL.csv uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
 ```
 
 ## Network weights
@@ -56,6 +56,21 @@ https://www.dropbox.com/s/8npy4d6q86eqpfn/finetuning_model_5_ptm_CACA_10A.pt.gz?
 https://www.dropbox.com/s/5jmb8pxmt5rr751/finetuning_model_5_ptm_distogram.pt.gz?dl=0
 
 They need to be unpacked (gunzip).
+
+## AlphaLink IHM model deposition [alphalink-ihm-template](https://github.com/grandrea/alphalink-ihm-template)
+
+Script for generating model files in mmCif format for deposition in [PDB-Dev](https://pdb-dev.wwpdb.org/). Requires [python-ihm](https://github.com/ihmwg/python-ihm) from results of AlphaLink
+
+Takes a .csv file with the crosslinks, uniprot accession code and system name to generate a pdb-dev compliant file for deposition. Takes an mmcif file as an input.
+
+First, generate an mmcif file from the .pdb output of AlphaLink using [Maxit](https://sw-tools.rcsb.org/apps/MAXIT/index.html).
+
+Then, edit the make_ihm script to include authors, publication, system name, entity source, deposition database and details as you need.
+
+Then you can run with
+```
+python make_ihm.py
+```
 
 ## PDB models are available at: https://www.dropbox.com/sh/yrto5tzo7u1atqg/AABy2SdP-WFOanp7eOKr3eeoa?dl=0
 
