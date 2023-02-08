@@ -15,10 +15,10 @@
 
 import torch
 import torch.nn as nn
-from typing import Tuple, Optional
+from typing import Tuple
 
-from openfold.model.primitives import Linear, LayerNorm
-from openfold.utils.tensor_utils import add, one_hot
+from openfold.model.primitives import Linear
+from openfold.utils.tensor_utils import one_hot
 
 
 class InputEmbedder(nn.Module):
@@ -81,21 +81,15 @@ class InputEmbedder(nn.Module):
         d = ri[..., None] - ri[..., None, :]
         boundaries = torch.arange(
             start=-self.relpos_k, end=self.relpos_k + 1, device=d.device
-        ) 
-        reshaped_bins = boundaries.view(((1,) * len(d.shape)) + (len(boundaries),))
-        d = d[..., None] - reshaped_bins
-        d = torch.abs(d)
-        d = torch.argmin(d, dim=-1)
-        d = nn.functional.one_hot(d, num_classes=len(boundaries)).float()
-        d = d.to(ri.dtype)
-        return self.linear_relpos(d)
+        )
+        oh = one_hot(d, boundaries).type(ri.dtype)
+        return self.linear_relpos(oh)
 
     def forward(
         self,
         tf: torch.Tensor,
         ri: torch.Tensor,
         msa: torch.Tensor,
-        inplace_safe: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
@@ -117,15 +111,8 @@ class InputEmbedder(nn.Module):
         tf_emb_j = self.linear_tf_z_j(tf)
 
         # [*, N_res, N_res, c_z]
-        pair_emb = self.relpos(ri.type(tf_emb_i.dtype))
-        pair_emb = add(pair_emb, 
-            tf_emb_i[..., None, :], 
-            inplace=inplace_safe
-        )
-        pair_emb = add(pair_emb, 
-            tf_emb_j[..., None, :, :], 
-            inplace=inplace_safe
-        )
+        pair_emb = tf_emb_i[..., None, :] + tf_emb_j[..., None, :, :]
+        pair_emb = pair_emb + self.relpos(ri.type(pair_emb.dtype))
 
         # [*, N_clust, N_res, c_m]
         n_clust = msa.shape[-3]
@@ -148,6 +135,7 @@ class XLEmbedder(nn.Module):
         self,
         c_m: int,
         c_z: int,
+        distograms: bool,
         **kwargs,
     ):
         """
@@ -162,7 +150,11 @@ class XLEmbedder(nn.Module):
         self.c_m = c_m
         self.c_z = c_z
 
-        self.linear = Linear(self.c_m, self.c_z)
+        if distograms:
+            self.linear = Linear(128, self.c_z)
+        else:
+            self.linear = Linear(1, self.c_z)
+            
 
     def forward(
         self,
@@ -211,6 +203,7 @@ class RecyclingEmbedder(nn.Module):
 
     Implements Algorithm 32.
     """
+
     def __init__(
         self,
         c_m: int,
@@ -243,16 +236,17 @@ class RecyclingEmbedder(nn.Module):
         self.no_bins = no_bins
         self.inf = inf
 
+        self.bins = None
+
         self.linear = Linear(self.no_bins, self.c_z)
-        self.layer_norm_m = LayerNorm(self.c_m)
-        self.layer_norm_z = LayerNorm(self.c_z)
+        self.layer_norm_m = nn.LayerNorm(self.c_m)
+        self.layer_norm_z = nn.LayerNorm(self.c_z)
 
     def forward(
         self,
         m: torch.Tensor,
         z: torch.Tensor,
         x: torch.Tensor,
-        inplace_safe: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
@@ -268,28 +262,23 @@ class RecyclingEmbedder(nn.Module):
             z:
                 [*, N_res, N_res, C_z] pair embedding update
         """
+        if self.bins is None:
+            self.bins = torch.linspace(
+                self.min_bin,
+                self.max_bin,
+                self.no_bins,
+                dtype=x.dtype,
+                device=x.device,
+                requires_grad=False,
+            )
+
         # [*, N, C_m]
         m_update = self.layer_norm_m(m)
-        if(inplace_safe):
-            m.copy_(m_update)
-            m_update = m
-
-        # [*, N, N, C_z]
-        z_update = self.layer_norm_z(z)
-        if(inplace_safe):
-            z.copy_(z_update)
-            z_update = z
 
         # This squared method might become problematic in FP16 mode.
-        bins = torch.linspace(
-            self.min_bin,
-            self.max_bin,
-            self.no_bins,
-            dtype=x.dtype,
-            device=x.device,
-            requires_grad=False,
-        )
-        squared_bins = bins ** 2
+        # I'm using it because my homegrown method had a stubborn discrepancy I
+        # couldn't find in time.
+        squared_bins = self.bins ** 2
         upper = torch.cat(
             [squared_bins[1:], squared_bins.new_tensor([self.inf])], dim=-1
         )
@@ -302,7 +291,7 @@ class RecyclingEmbedder(nn.Module):
 
         # [*, N, N, C_z]
         d = self.linear(d)
-        z_update = add(z_update, d, inplace_safe)
+        z_update = d + self.layer_norm_z(z)
 
         return m_update, z_update
 
@@ -400,6 +389,7 @@ class ExtraMSAEmbedder(nn.Module):
 
     Implements Algorithm 2, line 15
     """
+
     def __init__(
         self,
         c_in: int,

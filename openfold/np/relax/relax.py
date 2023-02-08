@@ -22,6 +22,7 @@ import numpy as np
 
 class AmberRelaxation(object):
     """Amber relaxation."""
+
     def __init__(
         self,
         *,
@@ -29,8 +30,7 @@ class AmberRelaxation(object):
         tolerance: float,
         stiffness: float,
         exclude_residues: Sequence[int],
-        max_outer_iterations: int,
-        use_gpu: bool,
+        max_outer_iterations: int
     ):
         """Initialize Amber Relaxer.
 
@@ -46,7 +46,6 @@ class AmberRelaxation(object):
            CASP14. Use 20 so that >95% of the bad cases are relaxed. Relax finishes
            as soon as there are no violations, hence in most cases this causes no
            slowdown. In the worst case we do 20 outer iterations.
-          use_gpu: Whether to run on GPU
         """
 
         self._max_iterations = max_iterations
@@ -54,7 +53,6 @@ class AmberRelaxation(object):
         self._stiffness = stiffness
         self._exclude_residues = exclude_residues
         self._max_outer_iterations = max_outer_iterations
-        self._use_gpu = use_gpu
 
     def process(
         self, *, prot: protein.Protein
@@ -67,7 +65,6 @@ class AmberRelaxation(object):
             stiffness=self._stiffness,
             exclude_residues=self._exclude_residues,
             max_outer_iterations=self._max_outer_iterations,
-            use_gpu=self._use_gpu,
         )
         min_pos = out["pos"]
         start_pos = out["posinit"]
@@ -87,7 +84,4 @@ class AmberRelaxation(object):
         violations = out["structural_violations"][
             "total_per_residue_violations_mask"
         ]
-
-        min_pdb = protein.add_pdb_headers(prot, min_pdb)
-
         return min_pdb, debug_data, violations

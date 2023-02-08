@@ -1,11 +1,10 @@
 import argparse
 from functools import partial
-import json
 import logging
 from multiprocessing import Pool
 import os
-
 import sys
+import json
 sys.path.append(".") # an innocent hack to get this to run from the top level
 
 from tqdm import tqdm
@@ -26,13 +25,7 @@ def parse_file(f, args):
 
     local_data = {}
     local_data["release_date"] = mmcif.header["release_date"]
-
-    chain_ids, seqs = list(zip(*mmcif.chain_to_seqres.items()))
-    local_data["chain_ids"] = chain_ids
-    local_data["seqs"] = seqs
-    local_data["no_chains"] = len(chain_ids)
-
-    local_data["resolution"] = mmcif.header["resolution"]
+    local_data["no_chains"] = len(list(mmcif.structure.get_chains()))
 
     return {file_id: local_data}
 

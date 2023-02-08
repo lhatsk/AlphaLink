@@ -1,5 +1,4 @@
 import copy
-import importlib
 import ml_collections as mlc
 
 
@@ -11,127 +10,29 @@ def set_inf(c, inf):
             c[k] = inf
 
 
-def enforce_config_constraints(config):
-    def string_to_setting(s):
-        path = s.split('.')
-        setting = config
-        for p in path:
-            setting = setting[p]
-
-        return setting
-
-    mutually_exclusive_bools = [
-        (
-            "model.template.average_templates", 
-            "model.template.offload_templates"
-        ),
-        (
-            "globals.use_lma",
-            "globals.use_flash",
-        ),
-    ]
-
-    for s1, s2 in mutually_exclusive_bools:
-        s1_setting = string_to_setting(s1)
-        s2_setting = string_to_setting(s2)
-        if(s1_setting and s2_setting):
-            raise ValueError(f"Only one of {s1} and {s2} may be set at a time")
-
-    fa_is_installed = importlib.util.find_spec("flash_attn") is not None
-    if(config.globals.use_flash and not fa_is_installed):
-        raise ValueError("use_flash requires that FlashAttention is installed")
-
-
 def model_config(name, train=False, low_prec=False):
     c = copy.deepcopy(config)
-    if name == "initial_training":
-        # AF2 Suppl. Table 4, "initial training" setting
+    if name == "model_1":
         pass
-    elif name == "finetuning":
-        # AF2 Suppl. Table 4, "finetuning" setting
-        c.data.train.max_extra_msa = 5120
-        c.data.train.crop_size = 384
-        c.data.train.max_msa_clusters = 512
-        c.loss.violation.weight = 1.
-        c.loss.experimentally_resolved.weight = 0.01
-    elif name == "finetuning_ptm":
-        c.data.train.max_extra_msa = 5120
-        c.data.train.crop_size = 384
-        c.data.train.max_msa_clusters = 512
-        c.loss.violation.weight = 1.
-        c.loss.experimentally_resolved.weight = 0.01
-        c.model.heads.tm.enabled = True
-        c.loss.tm.weight = 0.1
-    elif name == "finetuning_no_templ":
-        # AF2 Suppl. Table 4, "finetuning" setting
-        c.data.train.max_extra_msa = 5120
-        c.data.train.crop_size = 384
-        c.data.train.max_msa_clusters = 512
-        c.model.template.enabled = False
-        c.loss.violation.weight = 1.
-        c.loss.experimentally_resolved.weight = 0.01
-    elif name == "finetuning_no_templ_ptm":
-        # AF2 Suppl. Table 4, "finetuning" setting
-        c.data.train.max_extra_msa = 5120
-        c.data.train.crop_size = 384
-        c.data.train.max_msa_clusters = 512
-        c.model.template.enabled = False
-        c.loss.violation.weight = 1.
-        c.loss.experimentally_resolved.weight = 0.01
-        c.model.heads.tm.enabled = True
-        c.loss.tm.weight = 0.1
-    elif name == "model_1":
-        # AF2 Suppl. Table 5, Model 1.1.1
-        c.data.train.max_extra_msa = 5120
-        c.data.predict.max_extra_msa = 5120
-        c.data.common.reduce_max_clusters_by_max_templates = True
-        c.data.common.use_templates = True
-        c.data.common.use_template_torsion_angles = True
-        c.model.template.enabled = True
     elif name == "model_2":
-        # AF2 Suppl. Table 5, Model 1.1.2
-        c.data.common.reduce_max_clusters_by_max_templates = True
-        c.data.common.use_templates = True
-        c.data.common.use_template_torsion_angles = True
-        c.model.template.enabled = True
+        pass
     elif name == "model_3":
-        # AF2 Suppl. Table 5, Model 1.2.1
-        c.data.train.max_extra_msa = 5120
-        c.data.predict.max_extra_msa = 5120
         c.model.template.enabled = False
     elif name == "model_4":
-        # AF2 Suppl. Table 5, Model 1.2.2
-        c.data.train.max_extra_msa = 5120
-        c.data.predict.max_extra_msa = 5120
         c.model.template.enabled = False
     elif name == "model_5":
-        # AF2 Suppl. Table 5, Model 1.2.3
         c.model.template.enabled = False
     elif name == "model_1_ptm":
-        c.data.train.max_extra_msa = 5120
-        c.data.predict.max_extra_msa = 5120 
-        c.data.common.reduce_max_clusters_by_max_templates = True
-        c.data.common.use_templates = True
-        c.data.common.use_template_torsion_angles = True
-        c.model.template.enabled = True
         c.model.heads.tm.enabled = True
         c.loss.tm.weight = 0.1
     elif name == "model_2_ptm":
-        c.data.common.reduce_max_clusters_by_max_templates = True
-        c.data.common.use_templates = True
-        c.data.common.use_template_torsion_angles = True
-        c.model.template.enabled = True
         c.model.heads.tm.enabled = True
         c.loss.tm.weight = 0.1
     elif name == "model_3_ptm":
-        c.data.train.max_extra_msa = 5120
-        c.data.predict.max_extra_msa = 5120
         c.model.template.enabled = False
         c.model.heads.tm.enabled = True
         c.loss.tm.weight = 0.1
     elif name == "model_4_ptm":
-        c.data.train.max_extra_msa = 5120
-        c.data.predict.max_extra_msa = 5120
         c.model.template.enabled = False
         c.model.heads.tm.enabled = True
         c.loss.tm.weight = 0.1
@@ -145,17 +46,12 @@ def model_config(name, train=False, low_prec=False):
     if train:
         c.globals.blocks_per_ckpt = 1
         c.globals.chunk_size = None
-        c.globals.use_lma = False
-        c.globals.offload_inference = False
-        c.model.template.average_templates = False
-        c.model.template.offload_templates = False
+
     if low_prec:
         c.globals.eps = 1e-4
         # If we want exact numerical parity with the original, inf can't be
         # a global constant
         set_inf(c, 1e4)
-
-    enforce_config_constraints(c)
 
     return c
 
@@ -168,11 +64,9 @@ c_s = mlc.FieldReference(384, field_type=int)
 blocks_per_ckpt = mlc.FieldReference(None, field_type=int)
 chunk_size = mlc.FieldReference(4, field_type=int)
 aux_distogram_bins = mlc.FieldReference(64, field_type=int)
-tm_enabled = mlc.FieldReference(False, field_type=bool)
 eps = mlc.FieldReference(1e-8, field_type=float)
 templates_enabled = mlc.FieldReference(True, field_type=bool)
 embed_template_torsion_angles = mlc.FieldReference(True, field_type=bool)
-tune_chunk_size = mlc.FieldReference(True, field_type=bool)
 
 NUM_RES = "num residues placeholder"
 NUM_MSA_SEQ = "msa placeholder"
@@ -248,12 +142,19 @@ config = mlc.ConfigDict(
                     ],
                     "true_msa": [NUM_MSA_SEQ, NUM_RES],
                     "use_clamped_fape": [],
+                    "xl": [
+                        NUM_RES, NUM_RES, None,
+                    ],
+                    "xl_grouping": [
+                        NUM_RES, NUM_RES, None,
+                    ],
                 },
                 "masked_msa": {
                     "profile_prob": 0.1,
                     "same_prob": 0.1,
                     "uniform_prob": 0.1,
                 },
+                "max_extra_msa": 1024,
                 "max_recycling_iters": 3,
                 "msa_cluster_features": True,
                 "reduce_msa_clusters_by_max_templates": False,
@@ -273,6 +174,8 @@ config = mlc.ConfigDict(
                     "between_segment_residues",
                     "deletion_matrix",
                     "no_recycling_iters",
+                    "xl",
+                    "xl_grouping",
                 ],
                 "use_templates": templates_enabled,
                 "use_template_torsion_angles": embed_template_torsion_angles,
@@ -291,13 +194,13 @@ config = mlc.ConfigDict(
                 "fixed_size": True,
                 "subsample_templates": False,  # We want top templates.
                 "masked_msa_replace_fraction": 0.15,
-                "max_msa_clusters": 512,
-                "max_extra_msa": 1024,
+                "max_msa_clusters": 128,
                 "max_template_hits": 4,
                 "max_templates": 4,
                 "crop": False,
                 "crop_size": None,
                 "supervised": False,
+                "subsample_recycling": False,
                 "uniform_recycling": False,
             },
             "eval": {
@@ -305,12 +208,12 @@ config = mlc.ConfigDict(
                 "subsample_templates": False,  # We want top templates.
                 "masked_msa_replace_fraction": 0.15,
                 "max_msa_clusters": 128,
-                "max_extra_msa": 1024,
                 "max_template_hits": 4,
                 "max_templates": 4,
                 "crop": False,
                 "crop_size": None,
                 "supervised": True,
+                "subsample_recycling": False,
                 "uniform_recycling": False,
             },
             "train": {
@@ -318,7 +221,6 @@ config = mlc.ConfigDict(
                 "subsample_templates": True,
                 "masked_msa_replace_fraction": 0.15,
                 "max_msa_clusters": 128,
-                "max_extra_msa": 1024,
                 "max_template_hits": 4,
                 "max_templates": 4,
                 "shuffle_top_k_prefiltered": 20,
@@ -326,15 +228,15 @@ config = mlc.ConfigDict(
                 "crop_size": 256,
                 "supervised": True,
                 "clamp_prob": 0.9,
+                "subsample_recycling": True,
                 "max_distillation_msa_clusters": 1000,
                 "uniform_recycling": True,
-                "distillation_prob": 0.75,
             },
             "data_module": {
                 "use_small_bfd": False,
                 "data_loaders": {
                     "batch_size": 1,
-                    "num_workers": 16,
+                    "num_workers": 8,
                 },
             },
         },
@@ -342,13 +244,6 @@ config = mlc.ConfigDict(
         "globals": {
             "blocks_per_ckpt": blocks_per_ckpt,
             "chunk_size": chunk_size,
-            # Use Staats & Rabe's low-memory attention algorithm. Mutually
-            # exclusive with use_flash.
-            "use_lma": False,
-            # Use FlashAttention in selected modules. Mutually exclusive with 
-            # use_lma.
-            "use_flash": False,
-            "offload_inference": False,
             "c_z": c_z,
             "c_m": c_m,
             "c_t": c_t,
@@ -364,6 +259,10 @@ config = mlc.ConfigDict(
                 "c_z": c_z,
                 "c_m": c_m,
                 "relpos_k": 32,
+            },
+            "xl_embedder": {
+                "c_z": c_z,
+                "c_m": 1,
             },
             "recycling_embedder": {
                 "c_z": c_z,
@@ -399,7 +298,6 @@ config = mlc.ConfigDict(
                     "pair_transition_n": 2,
                     "dropout_rate": 0.25,
                     "blocks_per_ckpt": blocks_per_ckpt,
-                    "tune_chunk_size": tune_chunk_size,
                     "inf": 1e9,
                 },
                 "template_pointwise_attention": {
@@ -415,17 +313,6 @@ config = mlc.ConfigDict(
                 "eps": eps,  # 1e-6,
                 "enabled": templates_enabled,
                 "embed_angles": embed_template_torsion_angles,
-                "use_unit_vector": False,
-                # Approximate template computation, saving memory.
-                # In our experiments, results are equivalent to or better than
-                # the stock implementation. Should be enabled for all new
-                # training runs.
-                "average_templates": False,
-                # Offload template embeddings to CPU memory. Vastly reduced
-                # memory consumption at the cost of a modest increase in
-                # runtime. Useful for inference on very long sequences.
-                # Mutually exclusive with average_templates.
-                "offload_templates": False,
             },
             "extra_msa": {
                 "extra_msa_embedder": {
@@ -445,11 +332,10 @@ config = mlc.ConfigDict(
                     "transition_n": 4,
                     "msa_dropout": 0.15,
                     "pair_dropout": 0.25,
-                    "clear_cache_between_blocks": False,
-                    "tune_chunk_size": tune_chunk_size,
+                    "blocks_per_ckpt": blocks_per_ckpt,
+                    "clear_cache_between_blocks": True,
                     "inf": 1e9,
                     "eps": eps,  # 1e-10,
-                    "ckpt": blocks_per_ckpt is not None,
                 },
                 "enabled": True,
             },
@@ -469,7 +355,6 @@ config = mlc.ConfigDict(
                 "pair_dropout": 0.25,
                 "blocks_per_ckpt": blocks_per_ckpt,
                 "clear_cache_between_blocks": False,
-                "tune_chunk_size": tune_chunk_size,
                 "inf": 1e9,
                 "eps": eps,  # 1e-10,
             },
@@ -503,7 +388,7 @@ config = mlc.ConfigDict(
                 "tm": {
                     "c_z": c_z,
                     "no_bins": aux_distogram_bins,
-                    "enabled": tm_enabled,
+                    "enabled": False,
                 },
                 "masked_msa": {
                     "c_m": c_m,
@@ -580,8 +465,7 @@ config = mlc.ConfigDict(
                 "min_resolution": 0.1,
                 "max_resolution": 3.0,
                 "eps": eps,  # 1e-8,
-                "weight": 0.,
-                "enabled": tm_enabled,
+                "weight": 0.0,
             },
             "eps": eps,
         },

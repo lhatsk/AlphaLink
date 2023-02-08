@@ -1,14 +1,14 @@
 {
-  "fp16": {
-    "enabled": false,
-    "min_loss_scale": 1
+  "optimizer": {
+    "type": "Adam",
+    "params": {
+      "lr": 0.0005,
+      "eps": 1e-05
+    }
   },
   "amp": {
     "enabled": false,
     "opt_level": "O2"
-  },
-  "bfloat16": {
-    "enabled": true
   },
   "zero_optimization": {
     "stage": 2,

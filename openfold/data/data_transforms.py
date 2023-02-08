@@ -50,7 +50,7 @@ def cast_to_64bit_ints(protein):
 
 
 def make_one_hot(x, num_classes):
-    x_one_hot = torch.zeros(*x.shape, num_classes, device=x.device)
+    x_one_hot = torch.zeros(*x.shape, num_classes)
     x_one_hot.scatter_(-1, x.unsqueeze(-1), 1)
     return x_one_hot
 
@@ -92,9 +92,9 @@ def fix_templates_aatype(protein):
         )
         # Map hhsearch-aatype to our aatype.
         new_order_list = rc.MAP_HHBLITS_AATYPE_TO_OUR_AATYPE
-        new_order = torch.tensor(
-            new_order_list, dtype=torch.int64, device=protein["aatype"].device,
-        ).expand(num_templates, -1)
+        new_order = torch.tensor(new_order_list, dtype=torch.int64).expand(
+            num_templates, -1
+        )
         protein["template_aatype"] = torch.gather(
             new_order, 1, index=protein["template_aatype"]
         )
@@ -106,8 +106,7 @@ def correct_msa_restypes(protein):
     """Correct MSA restype to have the same order as rc."""
     new_order_list = rc.MAP_HHBLITS_AATYPE_TO_OUR_AATYPE
     new_order = torch.tensor(
-        [new_order_list] * protein["msa"].shape[1], 
-        device=protein["msa"].device,
+        [new_order_list] * protein["msa"].shape[1], dtype=protein["msa"].dtype
     ).transpose(0, 1)
     protein["msa"] = torch.gather(new_order, 0, protein["msa"])
 
@@ -126,11 +125,6 @@ def correct_msa_restypes(protein):
     
     return protein
 
-def xl(protein):
-    protein["xl"] = protein["xl"].clone().detach().to(torch.float32)
-    protein["xl_grouping"] = protein["xl_grouping"].clone().detach().to(torch.float32)
-
-    return protein
 
 def squeeze_features(protein):
     """Remove singleton and repeated dimensions in protein features."""
@@ -193,10 +187,7 @@ def sample_msa(protein, max_seq, keep_extra, seed=None):
     if seed is not None:
         g.manual_seed(seed)
     shuffled = torch.randperm(num_seq - 1, generator=g) + 1
-    index_order = torch.cat(
-        (torch.tensor([0], device=shuffled.device), shuffled), 
-        dim=0
-    )
+    index_order = torch.cat((torch.tensor([0]), shuffled), dim=0)
     num_sel = min(max_seq, num_seq)
     sel_seq, not_sel_seq = torch.split(
         index_order, [num_sel, num_seq - num_sel]
@@ -245,13 +236,18 @@ def delete_extra_msa(protein):
             del protein["extra_" + k]
     return protein
 
+def xl(protein):
+    protein["xl"] = protein["xl"].clone().detach().to(torch.float32)
+    protein["xl_grouping"] = protein["xl_grouping"].clone().detach().to(torch.float32)
+
+    return protein
 
 # Not used in inference
 @curry1
 def block_delete_msa(protein, config):
     num_seq = protein["msa"].shape[0]
     block_num_seq = torch.floor(
-        torch.tensor(num_seq, dtype=torch.float32, device=protein["msa"].device)
+        torch.tensor(num_seq, dtype=torch.float32)
         * config.msa_fraction_per_block
     ).to(torch.int32)
 
@@ -284,11 +280,7 @@ def block_delete_msa(protein, config):
 @curry1
 def nearest_neighbor_clusters(protein, gap_agreement_weight=0.0):
     weights = torch.cat(
-        [
-            torch.ones(21, device=protein["msa"].device), 
-            gap_agreement_weight * torch.ones(1, device=protein["msa"].device),
-            torch.zeros(1, device=protein["msa"].device)
-        ],
+        [torch.ones(21), gap_agreement_weight * torch.ones(1), torch.zeros(1)],
         0,
     )
 
@@ -337,10 +329,7 @@ def unsorted_segment_sum(data, segment_ids, num_segments):
     )
     segment_ids = segment_ids.expand(data.shape)
     shape = [num_segments] + list(data.shape[1:])
-    tensor = (
-        torch.zeros(*shape, device=segment_ids.device)
-        .scatter_add_(0, segment_ids, data.float())
-    )
+    tensor = torch.zeros(*shape).scatter_add_(0, segment_ids, data.float())
     tensor = tensor.type(data.dtype)
     return tensor
 
@@ -417,7 +406,7 @@ def make_pseudo_beta(protein, prefix=""):
 
 @curry1
 def add_constant_field(protein, key, value):
-    protein[key] = torch.tensor(value, device=protein["msa"].device)
+    protein[key] = torch.tensor(value)
     return protein
 
 
@@ -447,11 +436,7 @@ def make_hhblits_profile(protein):
 def make_masked_msa(protein, config, replace_fraction):
     """Create data for BERT on raw MSA."""
     # Add a random amino acid uniformly.
-    random_aa = torch.tensor(
-        [0.05] * 20 + [0.0, 0.0], 
-        dtype=torch.float32, 
-        device=protein["aatype"].device
-    )
+    random_aa = torch.tensor([0.05] * 20 + [0.0, 0.0], dtype=torch.float32)
 
     categorical_probs = (
         config.uniform_prob * random_aa
@@ -468,7 +453,6 @@ def make_masked_msa(protein, config, replace_fraction):
         1.0 - config.profile_prob - config.same_prob - config.uniform_prob
     )
     assert mask_prob >= 0.0
-
     categorical_probs = torch.nn.functional.pad(
         categorical_probs, pad_shapes, value=mask_prob
     )
@@ -665,11 +649,7 @@ def make_atom14_masks(protein):
 
 
 def make_atom14_masks_np(batch):
-    batch = tree_map(
-        lambda n: torch.tensor(n, device=batch["aatype"].device), 
-        batch, 
-        np.ndarray
-    )
+    batch = tree_map(lambda n: torch.tensor(n), batch, np.ndarray)
     out = make_atom14_masks(batch)
     out = tensor_tree_map(lambda t: np.array(t), out)
     return out
@@ -733,7 +713,6 @@ def make_atom14_positions(protein):
             for index, correspondence in enumerate(correspondences):
                 renaming_matrix[index, correspondence] = 1.0
         all_matrices[resname] = renaming_matrix
-    
     renaming_matrices = torch.stack(
         [all_matrices[restype] for restype in restype_3]
     )

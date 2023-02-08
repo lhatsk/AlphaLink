@@ -18,7 +18,6 @@
 import collections
 import functools
 from typing import Mapping, List, Tuple
-from importlib import resources
 
 import numpy as np
 import tree
@@ -453,8 +452,9 @@ def load_stereo_chemical_props() -> Tuple[
       residue_bond_angles: dict that maps resname --> list of BondAngle tuples
     """
     # TODO: this file should be downloaded in a setup script
-    stereo_chemical_props = resources.read_text("openfold.resources", "stereo_chemical_props.txt")
-
+    stereo_chemical_props_path = "openfold/resources/stereo_chemical_props.txt"
+    with open(stereo_chemical_props_path, "rt") as f:
+        stereo_chemical_props = f.read()
     lines_iter = iter(stereo_chemical_props.splitlines())
     # Load bond lengths.
     residue_bonds = {}
@@ -1301,10 +1301,3 @@ def _make_atom14_ambiguity_feats():
 
 
 _make_atom14_ambiguity_feats()
-
-
-def aatype_to_str_sequence(aatype):
-    return ''.join([
-        restypes_with_x[aatype[i]] 
-        for i in range(len(aatype))
-    ])

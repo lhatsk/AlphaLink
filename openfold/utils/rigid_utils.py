@@ -26,7 +26,7 @@ def rot_matmul(
 ) -> torch.Tensor:
     """
         Performs matrix multiplication of two rotation matrix tensors. Written
-        out by hand to avoid AMP downcasting.
+        out by hand to avoid transfer to low-precision tensor cores.
 
         Args:
             a: [*, 3, 3] left multiplicand
@@ -34,30 +34,50 @@ def rot_matmul(
         Returns:
             The product ab
     """
-    def row_mul(i):
-        return torch.stack(
-            [
-                a[..., i, 0] * b[..., 0, 0]
-                + a[..., i, 1] * b[..., 1, 0]
-                + a[..., i, 2] * b[..., 2, 0],
-                a[..., i, 0] * b[..., 0, 1]
-                + a[..., i, 1] * b[..., 1, 1]
-                + a[..., i, 2] * b[..., 2, 1],
-                a[..., i, 0] * b[..., 0, 2]
-                + a[..., i, 1] * b[..., 1, 2]
-                + a[..., i, 2] * b[..., 2, 2],
-            ],
-            dim=-1,
-        )
-
-    return torch.stack(
+    row_1 = torch.stack(
         [
-            row_mul(0), 
-            row_mul(1), 
-            row_mul(2),
-        ], 
-        dim=-2
+            a[..., 0, 0] * b[..., 0, 0]
+            + a[..., 0, 1] * b[..., 1, 0]
+            + a[..., 0, 2] * b[..., 2, 0],
+            a[..., 0, 0] * b[..., 0, 1]
+            + a[..., 0, 1] * b[..., 1, 1]
+            + a[..., 0, 2] * b[..., 2, 1],
+            a[..., 0, 0] * b[..., 0, 2]
+            + a[..., 0, 1] * b[..., 1, 2]
+            + a[..., 0, 2] * b[..., 2, 2],
+        ],
+        dim=-1,
     )
+    row_2 = torch.stack(
+        [
+            a[..., 1, 0] * b[..., 0, 0]
+            + a[..., 1, 1] * b[..., 1, 0]
+            + a[..., 1, 2] * b[..., 2, 0],
+            a[..., 1, 0] * b[..., 0, 1]
+            + a[..., 1, 1] * b[..., 1, 1]
+            + a[..., 1, 2] * b[..., 2, 1],
+            a[..., 1, 0] * b[..., 0, 2]
+            + a[..., 1, 1] * b[..., 1, 2]
+            + a[..., 1, 2] * b[..., 2, 2],
+        ],
+        dim=-1,
+    )
+    row_3 = torch.stack(
+        [
+            a[..., 2, 0] * b[..., 0, 0]
+            + a[..., 2, 1] * b[..., 1, 0]
+            + a[..., 2, 2] * b[..., 2, 0],
+            a[..., 2, 0] * b[..., 0, 1]
+            + a[..., 2, 1] * b[..., 1, 1]
+            + a[..., 2, 2] * b[..., 2, 1],
+            a[..., 2, 0] * b[..., 0, 2]
+            + a[..., 2, 1] * b[..., 1, 2]
+            + a[..., 2, 2] * b[..., 2, 2],
+        ],
+        dim=-1,
+    )
+
+    return torch.stack([row_1, row_2, row_3], dim=-2)
 
 
 def rot_vec_mul(
@@ -66,7 +86,7 @@ def rot_vec_mul(
 ) -> torch.Tensor:
     """
         Applies a rotation to a vector. Written out by hand to avoid transfer
-        to avoid AMP downcasting.
+        to low-precision tensor cores.
 
         Args:
             r: [*, 3, 3] rotation matrices
@@ -74,7 +94,9 @@ def rot_vec_mul(
         Returns:
             [*, 3] rotated coordinates
     """
-    x, y, z = torch.unbind(t, dim=-1)
+    x = t[..., 0]
+    y = t[..., 1]
+    z = t[..., 2]
     return torch.stack(
         [
             r[..., 0, 0] * x + r[..., 0, 1] * y + r[..., 0, 2] * z,
@@ -300,12 +322,6 @@ class Rotation:
             raise ValueError(
                 "Incorrectly shaped rotation matrix or quaternion"
             )
-
-        # Force full-precision
-        if(quats is not None):
-            quats = quats.to(dtype=torch.float32)
-        if(rot_mats is not None):
-            rot_mats = rot_mats.to(dtype=torch.float32)
 
         if(quats is not None and normalize_quats):
             quats = quats / torch.linalg.norm(quats, dim=-1, keepdim=True)
@@ -841,9 +857,6 @@ class Rigid:
            (rots.device != trans.device)):
             raise ValueError("Rots and trans incompatible")
 
-        # Force full precision. Happens to the rotations automatically.
-        trans = trans.to(dtype=torch.float32)
-
         self._rots = rots
         self._trans = trans
 
@@ -1330,8 +1343,8 @@ class Rigid:
         c2_rots[..., 0, 0] = cos_c2
         c2_rots[..., 0, 2] = sin_c2
         c2_rots[..., 1, 1] = 1
-        c2_rots[..., 2, 0] = -1 * sin_c2
-        c2_rots[..., 2, 2] = cos_c2
+        c1_rots[..., 2, 0] = -1 * sin_c2
+        c1_rots[..., 2, 2] = cos_c2
 
         c_rots = rot_matmul(c2_rots, c1_rots)
         n_xyz = rot_vec_mul(c_rots, n_xyz)

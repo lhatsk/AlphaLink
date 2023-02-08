@@ -58,10 +58,7 @@ from openfold.utils.import_weights import (
 from openfold.utils.tensor_utils import (
     tensor_tree_map,
 )
-from openfold.utils.trace_utils import (
-    pad_feature_dict_seq,
-    trace_model_,
-)
+
 from scripts.utils import add_data_args
 
 from openfold.data.msa_subsampling import subsample_msa_sequentially, get_eff
@@ -293,8 +290,7 @@ def load_crosslinks(crosslink_csv, fdr, seq):
     crosslinks = np.zeros((n,n,1))
     grouping = np.zeros((n,n,1))
 
-    groups = np.arange(len(links))+1
-    np.random.shuffle(groups)
+    groups = np.arange(len(links))+1 # 0th group is no crosslink
     
     if links.shape[1] == 3:
         for i_, (i,j,fdr) in enumerate(links):
@@ -318,21 +314,12 @@ def load_crosslinks(crosslink_csv, fdr, seq):
     return crosslinks, grouping
 
 
-    
-
-
-
 def main(args):
     # Create the output directory
     os.makedirs(args.output_dir, exist_ok=True)
 
     config = model_config('model_5_ptm')
     
-    if(args.trace_model):
-        if(not config.data.predict.fixed_size):
-            raise ValueError(
-                "Tracing requires that fixed_size mode be enabled in the config"
-            )
     
     # template_featurizer = templates.TemplateHitFeaturizer(
     #     mmcif_dir=args.template_mmcif_dir,
@@ -395,20 +382,19 @@ def main(args):
         args,
     )
 
-    if(args.trace_model):
-        n = feature_dict["aatype"].shape[-2]
-        rounded_seqlen = round_up_seqlen(n)
-        feature_dict = pad_feature_dict_seq(
-            feature_dict, rounded_seqlen,
-        )
 
-        # feature_dicts[tag] = feature_dict
+    if args.crosslinks.endswith('.pt'):
+        crosslinks = torch.load(args.crosslinks)
+        feature_dict['xl'] = crosslinks['xl']
+        feature_dict['xl_grouping'] = crosslinks['grouping']
+    elif args.crosslinks.endswith('.csv'):
+        crosslinks, grouping = load_crosslinks(args.crosslinks, args.fdr, seq)
+        feature_dict['xl'] = crosslinks
+        feature_dict['xl_grouping'] = grouping
+    else:
+        print("Crosslinks need to be either given as a CSV or already as a tensor")
+        sys.exit(0)
 
-
-    crosslinks, grouping = load_crosslinks(args.crosslinks, args.fdr, seq)
-
-    feature_dict['xl'] = crosslinks
-    feature_dict['xl_grouping'] = grouping
 
     # subsample MSAs to specified Neff
     msa = feature_dict['msa']
@@ -428,19 +414,6 @@ def main(args):
         for k,v in processed_feature_dict.items()
     }
 
-    if(args.trace_model):
-        if(rounded_seqlen > cur_tracing_interval):
-            logger.info(
-                f"Tracing model at {rounded_seqlen} residues..."
-            )
-            t = time.perf_counter()
-            trace_model_(model, processed_feature_dict)
-            tracing_time = time.perf_counter() - t
-            logger.info(
-                f"Tracing time: {tracing_time}"
-            )
-            cur_tracing_interval = rounded_seqlen
-
     out = run_model(model, processed_feature_dict, tag, args)
 
     # Toss out the recycling dimensions --- we don't need them anymore
@@ -450,39 +423,34 @@ def main(args):
     )
     out = tensor_tree_map(lambda x: np.array(x.cpu()), out)
 
-    unrelaxed_protein = prep_output(
-        out, 
-        processed_feature_dict, 
-        feature_dict, 
-        feature_processor, 
-        args
+    plddt = out["plddt"]
+
+    plddt_b_factors = np.repeat(
+        plddt[..., None], residue_constants.atom_type_num, axis=-1
+    )
+
+    unrelaxed_protein = protein.from_prediction(
+        features=processed_feature_dict,
+        result=out,
+        b_factors=plddt_b_factors
     )
 
     unrelaxed_output_path = os.path.join(
         output_directory, f'{output_name}_unrelaxed.pdb'
     )
 
+
     with open(unrelaxed_output_path, 'w') as fp:
         fp.write(protein.to_pdb(unrelaxed_protein))
 
     logger.info(f"Output written to {unrelaxed_output_path}...")
-    
-    if not args.skip_relaxation:
-        amber_relaxer = relax.AmberRelaxation(
-            use_gpu=(args.model_device != "cpu"),
-            **config.relax,
-        )
 
-        # Relax the prediction.
-        logger.info(f"Running relaxation on {unrelaxed_output_path}...")
-        t = time.perf_counter()
-        visible_devices = os.getenv("CUDA_VISIBLE_DEVICES", default="")
-        if "cuda" in args.model_device:
-            device_no = args.model_device.split(":")[-1]
-            os.environ["CUDA_VISIBLE_DEVICES"] = device_no
+    if not args.skip_relaxation:        
+        amber_relaxer = relax.AmberRelaxation(
+            **config.relax
+        )
+        
         relaxed_pdb_str, _, _ = amber_relaxer.process(prot=unrelaxed_protein)
-        os.environ["CUDA_VISIBLE_DEVICES"] = visible_devices
-        logger.info(f"Relaxation time: {time.perf_counter() - t}")
 
         # Save the relaxed PDB.
         relaxed_output_path = os.path.join(
@@ -492,15 +460,6 @@ def main(args):
             fp.write(relaxed_pdb_str)
         
         logger.info(f"Relaxed output written to {relaxed_output_path}...")
-
-    if args.save_outputs:
-        output_dict_path = os.path.join(
-            output_directory, f'{output_name}_output_dict.pkl'
-        )
-        with open(output_dict_path, "wb") as fp:
-            pickle.dump(out, fp, protocol=pickle.HIGHEST_PROTOCOL)
-
-        logger.info(f"Model output written to {output_dict_path}...")
 
 
 if __name__ == "__main__":
@@ -531,16 +490,6 @@ if __name__ == "__main__":
         help="""Name of the device on which to run the model. Any valid torch
              device name is accepted (e.g. "cpu", "cuda:0")"""
     )
-    # parser.add_argument(
-    #     "--config_preset", type=str, default="model_1",
-    #     help="""Name of a model config preset defined in openfold/config.py"""
-    # )
-    # parser.add_argument(
-    #     "--jax_param_path", type=str, default=None,
-    #     help="""Path to JAX model parameters. If None, and openfold_checkpoint_path
-    #          is also None, parameters are selected automatically according to 
-    #          the model name from openfold/resources/params"""
-    # )
     parser.add_argument(
         "--checkpoint_path", type=str, default='resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt',
         help="""Path to OpenFold checkpoint (.pt file)"""
@@ -568,18 +517,8 @@ if __name__ == "__main__":
         "--skip_relaxation", action="store_true", default=False,
     )
     parser.add_argument(
-        "--multimer_ri_gap", type=int, default=200,
-        help="""Residue index offset between multiple sequences, if provided"""
-    )
-    parser.add_argument(
         "--neff", type=float, default=10,
         help="""MSAs are subsampled to specified Neff"""
-    )
-    parser.add_argument(
-        "--trace_model", action="store_true", default=False,
-        help="""Whether to convert parts of each model to TorchScript.
-                Significantly improves runtime at the cost of lengthy
-                'compilation.' Useful for large batch jobs."""
     )
     parser.add_argument(
         "--subtract_plddt", action="store_true", default=False,
@@ -588,12 +527,6 @@ if __name__ == "__main__":
     )
     add_data_args(parser)
     args = parser.parse_args()
-
-    # if(args.jax_param_path is None and args.openfold_checkpoint_path is None):
-    #     args.jax_param_path = os.path.join(
-    #         "openfold", "resources", "params", 
-    #         "params_" + args.config_preset + ".npz"
-    #     )
 
     if(args.model_device == "cpu" and torch.cuda.is_available()):
         logging.warning(

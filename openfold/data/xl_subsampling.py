@@ -17,14 +17,18 @@ def sample_ambiguous_links(crosslinker_position,partner_position, L):
 def round_down(x, a=0.05):
     return math.floor(x / a) * a
 
-def sample_xl(tp,fp,seq,fdr=0.05,cov=0.1,ambiguous=True):
+def sample_xl(tp,fp,seq,fdr=0.05,cov=0.1,ambiguous=False, stochastic=False):
     
     photoAA = ['L', 'K']
 
     pick_tp_ = int(len(tp) * cov)
     pick_tp = len(tp) if pick_tp_ == 0 else pick_tp_
-    # pick_fp = max(1, math.ceil(fdr * pick_tp))
-    pick_fp = max(1, math.ceil(fdr / (1 - fdr) * pick_tp))
+
+    if stochastic:
+        pick_fp = torch.sum(torch.bernoulli(torch.full((pick_tp,),fdr))).long()
+    else:
+        pick_fp = max(1, math.ceil(fdr / (1 - fdr) * pick_tp))
+
 
     tp = tp[torch.randperm(len(tp))][:pick_tp]
     fp = fp[torch.randperm(len(fp))][:pick_fp]    
@@ -41,7 +45,7 @@ def sample_xl(tp,fp,seq,fdr=0.05,cov=0.1,ambiguous=True):
     n = len(xl)
     for i, row in enumerate(xl):
         count += 1 - row[2]
-        fdr_ = min(0.95, round_down((n - count) / n))
+        fdr_ = min(1-fdr, round_down((n - count) / n))
         xl[i,2] = fdr_
 
     groups = np.arange(n) + 1 # 0th group for non-xl
@@ -49,9 +53,6 @@ def sample_xl(tp,fp,seq,fdr=0.05,cov=0.1,ambiguous=True):
 
     n = len(seq)
 
-    # xl_ = torch.zeros((n,n))
-    # grouping = torch.zeros((n,n))
-    # real = torch.zeros((n,n))
 
     xl_ = np.zeros((n,n,1))
     grouping = np.zeros((n,n,1))
@@ -69,9 +70,6 @@ def sample_xl(tp,fp,seq,fdr=0.05,cov=0.1,ambiguous=True):
         else:
             xl_[first,second,0] = xl_[second,first,0] = fdr
             grouping[first,second,0] = grouping[second,first,0] = groups[i]
-            
-        # real[first,second] = real[second,first] = 1
-        
-        
+                    
 
     return xl_, grouping, real

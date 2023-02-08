@@ -12,16 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import reduce
-import importlib
-import math
-from operator import mul
 
+import math
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple, Sequence
+from typing import Optional, Tuple
 
-from openfold.model.primitives import Linear, LayerNorm, ipa_point_weights_init_
+from openfold.model.primitives import Linear, ipa_point_weights_init_
 from openfold.np.residue_constants import (
     restype_rigid_group_default_frame,
     restype_atom14_to_rigid_group,
@@ -38,8 +35,6 @@ from openfold.utils.tensor_utils import (
     permute_final_dims,
     flatten_final_dims,
 )
-
-attn_core_inplace_cuda = importlib.import_module("attn_core_inplace_cuda")
 
 
 class AngleResnetBlock(nn.Module):
@@ -229,12 +224,9 @@ class InvariantPointAttention(nn.Module):
     def forward(
         self,
         s: torch.Tensor,
-        z: Optional[torch.Tensor],
+        z: torch.Tensor,
         r: Rigid,
         mask: torch.Tensor,
-        inplace_safe: bool = False,
-        _offload_inference: bool = False,
-        _z_reference_list: Optional[Sequence[torch.Tensor]] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -249,11 +241,6 @@ class InvariantPointAttention(nn.Module):
         Returns:
             [*, N_res, C_s] single representation update
         """
-        if(_offload_inference and inplace_safe):
-            z = _z_reference_list
-        else:
-            z = [z]
-       
         #######################################
         # Generate scalar and point activations
         #######################################
@@ -304,25 +291,19 @@ class InvariantPointAttention(nn.Module):
         # Compute attention scores
         ##########################
         # [*, N_res, N_res, H]
-        b = self.linear_b(z[0])
-        
-        if(_offload_inference):
-            z[0] = z[0].cpu()
+        b = self.linear_b(z)
 
         # [*, H, N_res, N_res]
         a = torch.matmul(
             permute_final_dims(q, (1, 0, 2)),  # [*, H, N_res, C_hidden]
             permute_final_dims(k, (1, 2, 0)),  # [*, H, C_hidden, N_res]
         )
-        a *= math.sqrt(1.0 / (3 * self.c_hidden))
-        a += (math.sqrt(1.0 / 3) * permute_final_dims(b, (2, 0, 1)))
+        a = a * math.sqrt(1.0 / (3 * self.c_hidden))
+        a = a + (math.sqrt(1.0 / 3) * permute_final_dims(b, (2, 0, 1)))
 
         # [*, N_res, N_res, H, P_q, 3]
         pt_att = q_pts.unsqueeze(-4) - k_pts.unsqueeze(-5)
-        if(inplace_safe):
-            pt_att *= pt_att
-        else:
-            pt_att = pt_att ** 2
+        pt_att = pt_att ** 2
 
         # [*, N_res, N_res, H, P_q]
         pt_att = sum(torch.unbind(pt_att, dim=-1))
@@ -332,10 +313,7 @@ class InvariantPointAttention(nn.Module):
         head_weights = head_weights * math.sqrt(
             1.0 / (3 * (self.no_qk_points * 9.0 / 2))
         )
-        if(inplace_safe):
-            pt_att *= head_weights
-        else:
-            pt_att = pt_att * head_weights
+        pt_att = pt_att * head_weights
 
         # [*, N_res, N_res, H]
         pt_att = torch.sum(pt_att, dim=-1) * (-0.5)
@@ -345,49 +323,29 @@ class InvariantPointAttention(nn.Module):
 
         # [*, H, N_res, N_res]
         pt_att = permute_final_dims(pt_att, (2, 0, 1))
-        
-        if(inplace_safe):
-            a += pt_att
-            del pt_att
-            a += square_mask.unsqueeze(-3)
-            # in-place softmax
-            attn_core_inplace_cuda.forward_(
-                a,
-                reduce(mul, a.shape[:-1]),
-                a.shape[-1],
-            )
-        else:
-            a = a + pt_att 
-            a = a + square_mask.unsqueeze(-3)
-            a = self.softmax(a)
+        a = a + pt_att
+        a = a + square_mask.unsqueeze(-3)
+        a = self.softmax(a)
 
         ################
         # Compute output
         ################
         # [*, N_res, H, C_hidden]
-        o = torch.matmul(
-            a, v.transpose(-2, -3).to(dtype=a.dtype)
-        ).transpose(-2, -3)
+        o = torch.matmul(a, v.transpose(-2, -3)).transpose(-2, -3)
 
         # [*, N_res, H * C_hidden]
         o = flatten_final_dims(o, 2)
 
-        # [*, H, 3, N_res, P_v] 
-        if(inplace_safe):
-            v_pts = permute_final_dims(v_pts, (1, 3, 0, 2))
-            o_pt = [
-                torch.matmul(a, v.to(a.dtype)) 
-                for v in torch.unbind(v_pts, dim=-3)
-            ]
-            o_pt = torch.stack(o_pt, dim=-3)
-        else:
-            o_pt = torch.sum(
-                (
-                    a[..., None, :, :, None]
-                    * permute_final_dims(v_pts, (1, 3, 0, 2))[..., None, :, :]
-                ),
-                dim=-2,
-            )
+        # As DeepMind explains, this manual matmul ensures that the operation
+        # happens in float32.
+        # [*, H, 3, N_res, P_v]
+        o_pt = torch.sum(
+            (
+                a[..., None, :, :, None]
+                * permute_final_dims(v_pts, (1, 3, 0, 2))[..., None, :, :]
+            ),
+            dim=-2,
+        )
 
         # [*, N_res, H, P_v, 3]
         o_pt = permute_final_dims(o_pt, (2, 0, 3, 1))
@@ -401,11 +359,8 @@ class InvariantPointAttention(nn.Module):
         # [*, N_res, H * P_v, 3]
         o_pt = o_pt.reshape(*o_pt.shape[:-3], -1, 3)
 
-        if(_offload_inference):
-            z[0] = z[0].to(o_pt.device)
-
         # [*, N_res, H, C_z]
-        o_pair = torch.matmul(a.transpose(-2, -3), z[0].to(dtype=a.dtype))
+        o_pair = torch.matmul(a.transpose(-2, -3), z)
 
         # [*, N_res, H * C_z]
         o_pair = flatten_final_dims(o_pair, 2)
@@ -414,9 +369,9 @@ class InvariantPointAttention(nn.Module):
         s = self.linear_out(
             torch.cat(
                 (o, *torch.unbind(o_pt, dim=-1), o_pt_norm, o_pair), dim=-1
-            ).to(dtype=z[0].dtype)
+            )
         )
-        
+
         return s
 
 
@@ -489,7 +444,7 @@ class StructureModuleTransition(nn.Module):
             self.layers.append(l)
 
         self.dropout = nn.Dropout(self.dropout_rate)
-        self.layer_norm = LayerNorm(self.c)
+        self.layer_norm = nn.LayerNorm(self.c)
 
     def forward(self, s):
         for l in self.layers:
@@ -579,8 +534,8 @@ class StructureModule(nn.Module):
         self.atom_mask = None
         self.lit_positions = None
 
-        self.layer_norm_s = LayerNorm(self.c_s)
-        self.layer_norm_z = LayerNorm(self.c_z)
+        self.layer_norm_s = nn.LayerNorm(self.c_s)
+        self.layer_norm_z = nn.LayerNorm(self.c_z)
 
         self.linear_in = Linear(self.c_s, self.c_s)
 
@@ -596,7 +551,7 @@ class StructureModule(nn.Module):
         )
 
         self.ipa_dropout = nn.Dropout(self.dropout_rate)
-        self.layer_norm_ipa = LayerNorm(self.c_s)
+        self.layer_norm_ipa = nn.LayerNorm(self.c_s)
 
         self.transition = StructureModuleTransition(
             self.c_s,
@@ -616,20 +571,17 @@ class StructureModule(nn.Module):
 
     def forward(
         self,
-        evoformer_output_dict,
+        s,
+        z,
         aatype,
         mask=None,
-        inplace_safe=False,
-        _offload_inference=False,
     ):
         """
         Args:
-            evoformer_output_dict:
-                Dictionary containing:
-                    "single":
-                        [*, N_res, C_s] single representation
-                    "pair":
-                        [*, N_res, N_res, C_z] pair representation
+            s:
+                [*, N_res, C_s] single representation
+            z:
+                [*, N_res, N_res, C_z] pair representation
             aatype:
                 [*, N_res] amino acid indices
             mask:
@@ -637,8 +589,6 @@ class StructureModule(nn.Module):
         Returns:
             A dictionary of outputs
         """
-        s = evoformer_output_dict["single"]
-        
         if mask is None:
             # [*, N]
             mask = s.new_ones(s.shape[:-1])
@@ -647,13 +597,7 @@ class StructureModule(nn.Module):
         s = self.layer_norm_s(s)
 
         # [*, N, N, C_z]
-        z = self.layer_norm_z(evoformer_output_dict["pair"])
-
-        z_reference_list = None
-        if(_offload_inference):
-            evoformer_output_dict["pair"] = evoformer_output_dict["pair"].cpu()
-            z_reference_list = [z]
-            z = None
+        z = self.layer_norm_z(z)
 
         # [*, N, C_s]
         s_initial = s
@@ -670,19 +614,11 @@ class StructureModule(nn.Module):
         outputs = []
         for i in range(self.no_blocks):
             # [*, N, C_s]
-            s = s + self.ipa(
-                s, 
-                z, 
-                rigids, 
-                mask, 
-                inplace_safe=inplace_safe,
-                _offload_inference=_offload_inference, 
-                _z_reference_list=z_reference_list
-            )
+            s = s + self.ipa(s, z, rigids, mask)
             s = self.ipa_dropout(s)
             s = self.layer_norm_ipa(s)
             s = self.transition(s)
-           
+
             # [*, N]
             rigids = rigids.compose_q_update_vec(self.bb_update(s))
 
@@ -727,14 +663,8 @@ class StructureModule(nn.Module):
 
             outputs.append(preds)
 
-            rigids = rigids.stop_rot_gradient()
-
-        del z, z_reference_list
-        
-        if(_offload_inference):
-            evoformer_output_dict["pair"] = (
-                evoformer_output_dict["pair"].to(s.device)
-            )
+            if i < (self.no_blocks - 1):
+                rigids = rigids.stop_rot_gradient()
 
         outputs = dict_multimap(torch.stack, outputs)
         outputs["single"] = s

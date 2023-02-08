@@ -50,31 +50,32 @@ def subsample_msa(msa, neff=10, eff_cutoff=0.8, cap_msa=True):
 # if cap_msa is enabled, we bypass the ExtraMSAStack, helps with determinism for |MSA| < 128
 def subsample_msa_sequentially(msa, neff=10, eff_cutoff=0.8, cap_msa=True):
     if msa.shape[0] == 1:
-        return msa
-    
-    new = [msa[0]]
-    
-    msa = msa[1:]
-    
-    idx = np.arange(msa.shape[0])
+        return np.array([0])
+
+    indices = [0]
+
+    idx = np.arange(msa.shape[0] - 1) + 1
     np.random.shuffle(idx)
-    msa = msa[idx]
-    
-    for m in msa:
-        new.append(m)
+
+    new = [msa[0]]
+
+    for i in idx:
+        new.append(msa[i])
+        indices.append(i)
         neff_ = get_eff(np.array(new), eff_cutoff=eff_cutoff).sum()
-        
+
         if cap_msa:
             if neff_ > neff or len(new) > 126:
                 new.pop()
+                indices.pop()
                 break
         else:
             if neff_ > neff:
                 new.pop()
+                indices.pop()
                 break
-            
-    return np.array(new)
 
+    return np.array(indices)
 
 def subsample_msa_random(msa, neff=10, eff_cutoff=0.8):
     if msa.shape[0] == 1:
