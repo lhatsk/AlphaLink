@@ -1,9 +1,9 @@
 # AlphaLink
 
-AlphaLink predicts protein structures using deep learning given a sequence and a set of experimental contacts. It extends [OpenFold](https://github.com/aqlaboratory/openfold) with crosslinking MS data or other experimental distance restraint or contact information by explicitly incorporating them in the OpenFold architecture. The experimental distance restraints may be represented in one of two forms:
+AlphaLink predicts protein structures using deep learning given a sequence and a set of experimental contacts. It extends [OpenFold](https://github.com/aqlaboratory/openfold) with crosslinking MS data or other experimental distance restraint by explicitly incorporating them in the OpenFold architecture. The experimental distance restraints may be represented in one of two forms:
 
 1. As contacts/upper bound distance restraints
-2. As distance distributions (distograms)
+2. As distance distributions (distograms) (flag --distograms)
 
 For (1), we trained our network with 10 Angstrom Ca-Ca and show robust rejection of experimental noise and false restraints. The distogram representation (2) allows the user to input longer restraints, for example corresponding to crosslinkers with spacers like BS3 or DSS. 
 
@@ -31,9 +31,13 @@ residueFrom residueTo FDR
 147 41 0.05
 ```
 
-residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). FDR is between 0 and 1.
+residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). FDR is between 0 and 1. CSV format is not supported for distograms.
 
 The software may then be run with models based on upper bound distance thresholds or using generalized distograms. Distograms have shape LxLx128 with the following binning: torch.arange(2.3125,42,0.3125) and no group embedding. Last bin is a catch-all bin. The probabilities should sum up to 1. To use distograms, you have to set the distograms flag to True in the xl_embedder in config_crosslinks.py.
+
+## MSA subsampling
+
+MSAs can be subsampled to a given Neff with --neff. 
 
 ## Usage
 
@@ -78,7 +82,7 @@ python make_ihm.py
 
 We eliminated all non-determinism (MSA masking), since with low Neff targets, different MSA masking can have a big effect.
 
-The models generated for the [AlphaLink paper]() are deposited in [ModelArchive]() and [PDB-Dev](). The restraints used in the modeling are available as supplementary tables to the AlphaLink paper.
+The models generated for the [AlphaLink paper]() are deposited in [ModelArchive](https://modelarchive.org/doi/10.5452/ma-rap-alink) and [PDB-Dev](https://pdb-dev.wwpdb.org/entry.html?PDBDEV_00000165). The restraints used in the modeling are available as supplementary tables to the AlphaLink paper.
 
 ## Copyright notice
 

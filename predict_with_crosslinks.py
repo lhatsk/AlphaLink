@@ -320,6 +320,8 @@ def main(args):
 
     config = model_config('model_5_ptm')
     
+    if args.distograms:
+        config.model.xl_embedder.distograms = True
     
     # template_featurizer = templates.TemplateHitFeaturizer(
     #     mmcif_dir=args.template_mmcif_dir,
@@ -369,18 +371,18 @@ def main(args):
     if args.output_postfix is not None:
         output_name = f'{output_name}_{args.output_postfix}'
 
-    # Does nothing if the alignments have already been computed
-    precompute_alignments(tag, seq, alignment_dir, args)
-
-    # feature_dict = feature_dicts.get(tag, None)
-    # if(feature_dict is None):
-    feature_dict = generate_feature_dict(
-        [tag],
-        [seq],
-        alignment_dir,
-        data_processor,
-        args,
-    )
+    if args.features:
+        feature_dict = pickle.load(open(args.features,'rb'))
+    else:
+        # Does nothing if the alignments have already been computed
+        precompute_alignments(tag, seq, alignment_dir, args)
+        feature_dict = generate_feature_dict(
+            [tag],
+            [seq],
+            alignment_dir,
+            data_processor,
+            args,
+        )
 
 
     if args.crosslinks.endswith('.pt'):
@@ -399,11 +401,13 @@ def main(args):
     # subsample MSAs to specified Neff
     msa = feature_dict['msa']
 
-    logger.info(
-        f"Subsampling MSA to Neff={args.neff}..."
-    )
-    # msa = subsample_msa_sequentially(msa, neff=args.neff)
-    feature_dict['msa'] = msa
+    if args.neff:
+        logger.info(
+            f"Subsampling MSA to Neff={args.neff}..."
+        )
+        indices = subsample_msa_sequentially(msa, neff=args.neff)
+        feature_dict['msa'] = msa[indices]
+        feature_dict['deletion_matrix'] = feature_dict['deletion_matrix'][indices]
 
     processed_feature_dict = feature_processor.process_features(
         feature_dict, mode='predict',
@@ -499,6 +503,14 @@ if __name__ == "__main__":
         help="Whether to save all model outputs, including embeddings, etc."
     )
     parser.add_argument(
+        "--features", type=str,
+        help="Feature pickle"
+    )
+    parser.add_argument(
+        "--distograms", action="store_true", default=False,
+        help="Switch to distogram mode"
+    )
+    parser.add_argument(
         "--cpus", type=int, default=4,
         help="""Number of CPUs with which to run alignment tools"""
     )
@@ -517,7 +529,7 @@ if __name__ == "__main__":
         "--skip_relaxation", action="store_true", default=False,
     )
     parser.add_argument(
-        "--neff", type=float, default=10,
+        "--neff", type=float,
         help="""MSAs are subsampled to specified Neff"""
     )
     parser.add_argument(
