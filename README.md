@@ -1,3 +1,6 @@
+![header ](imgs/T1064_pred.png)
+_Figure: AlphaLink (teal) prediction of T1064 with simulated crosslinks (blue)_
+
 # AlphaLink
 
 AlphaLink predicts protein structures using deep learning given a sequence and a set of experimental contacts. It extends [OpenFold](https://github.com/aqlaboratory/openfold) with crosslinking MS data or other experimental distance restraint by explicitly incorporating them in the OpenFold architecture. The experimental distance restraints may be represented in one of two forms:
@@ -7,18 +10,9 @@ AlphaLink predicts protein structures using deep learning given a sequence and a
 
 For (1), we trained our network with 10 Angstrom Ca-Ca and show robust rejection of experimental noise and false restraints. The distogram representation (2) allows the user to input longer restraints, for example corresponding to crosslinkers with spacers like BS3 or DSS. 
 
-## System Requirements
-
-### Hardware requirements
-AlphaLink requires only standard computer hardware with sufficient RAM for bigger proteins. Computation can be accelerated with a NVIDIA GPU with ideally >32GB VRAM.
-
-### Software requirements
-
-This package is supported on Linux.
-
 ## Installation
 
-Please refer to the [OpenFold GitHub](https://github.com/aqlaboratory/openfold) for installation instructions. 
+Please refer to the [OpenFold GitHub](https://github.com/aqlaboratory/openfold#installation-linux) for installation instructions of the required packages. AlphaLink requires the same packages, since it builds on top of OpenFold.  
 
 ## Crosslinking data
 
