@@ -1,5 +1,5 @@
 ![header ](imgs/T1064_pred.png)
-_Figure: AlphaLink (teal) prediction of T1064 with simulated crosslinks (blue)_
+_Figure: AlphaLink prediction (teal) of T1064 with simulated crosslinks (blue)_
 
 # AlphaLink
 
