@@ -8,7 +8,8 @@ AlphaLink predicts protein structures using deep learning given a sequence and a
 1. As contacts/upper bound distance restraints
 2. As distance distributions (distograms) (flag --distograms)
 
-For (1), we trained our network with 10 Angstrom Ca-Ca and show robust rejection of experimental noise and false restraints. The distogram representation (2) allows the user to input longer restraints, for example corresponding to crosslinkers with spacers like BS3 or DSS. 
+For (1), we trained our network with 10 Angstrom Ca-Ca and show robust rejection of experimental noise and false restraints. The distogram representation (2) allows the user to input longer restraints, for example corresponding to crosslinkers with spacers like BS3 or DSS or to NMR PRE distance restraints.
+
 
 ## Installation
 
@@ -37,7 +38,16 @@ residueFrom residueTo 1..128
 147 77 0.01 0.015 0.05 0.05 ...
 147 41 0.04 0.1 0.05 0.052 ...
 ```
-residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). Columns 2-130 contain the probability for each bin in numpy.arange(2.3125,42,0.3125). Each restraint can have a different distribution, any uncertainty has to be encoded in the distribution. There is no additional FDR parameter.
+residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). Columns 2-130 contain the probability for each bin in numpy.arange(2.3125,42,0.3125)- i.e. the probability of each bin in a distogram going from 2.3125 to 42 Angstrom. Each restraint can have a different distribution, any uncertainty has to be encoded in the distribution. There is no additional FDR parameter.
+
+Distance distributions for AlphaLink can be automatically generated from restraint lists with the script preprocessing_distributions.py.
+
+     python preprocessing_distributions.py --infile restraints.csv
+
+This will generate a restraint list with distance distributions binned in 128-bin distograms that can be given to AlphaLink using the --XXX flag
+
+     insert_options_here
+
 
 ## MSA subsampling
 
