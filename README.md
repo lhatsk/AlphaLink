@@ -41,14 +41,15 @@ residueFrom residueTo 1..128
 residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). Columns 2-130 contain the probability for each bin in numpy.arange(2.3125,42,0.3125)- i.e. the probability of each bin in a distogram going from 2.3125 to 42 Angstrom. Each restraint can have a different distribution, any uncertainty has to be encoded in the distribution. There is no additional FDR parameter.
 
 Distance distributions for AlphaLink can be automatically generated from restraint lists with the script preprocessing_distributions.py.
-
+```
      python preprocessing_distributions.py --infile restraints.csv
+```
 
-This will generate a restraint list with distance distributions binned in 128-bin distograms that can be given to AlphaLink using the --XXX flag
+This will generate a restraint list with distance distributions binned in 128-bin distograms that can be given to AlphaLink when run with the --distograms flag
 
-     insert_options_here
-
-
+```
+     python predict_with_crosslinks.py --distograms --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt 7K3N_A.fasta restraints.csv uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
+```
 ## MSA subsampling
 
 MSAs can be subsampled to a given Neff with --neff. 
