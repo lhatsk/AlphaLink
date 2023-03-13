@@ -56,7 +56,7 @@ MSAs can be subsampled to a given Neff with --neff.
 
 ## Usage
 
-AlphaLink expects a FASTA file containing a single sequence, the crosslinking MS residue pairs, and databases for template/ MSA search , [see also OpenFold Inference](https://github.com/aqlaboratory/openfold#inference).
+AlphaLink expects a FASTA file containing a single sequence, the crosslinking MS residue pairs, and databases for template/ MSA search, [see also OpenFold Inference](https://github.com/aqlaboratory/openfold#inference).
 
 ```
 python predict_with_crosslinks.py --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt 7K3N_A.fasta photoL.csv uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
