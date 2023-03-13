@@ -27,7 +27,17 @@ residueFrom residueTo FDR
 
 residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). FDR is between 0 and 1. CSV format is not supported for distograms.
 
-The software may then be run with models based on upper bound distance thresholds or using generalized distograms. Distograms have shape LxLx128 with the following binning: torch.arange(2.3125,42,0.3125) and no group embedding. Last bin is a catch-all bin. The probabilities should sum up to 1. To use distograms, you have to set the distograms flag to True in the xl_embedder in config_crosslinks.py.
+The software may then be run with models based on upper bound distance thresholds or using generalized distograms. Distograms have shape LxLx128 with the following binning: numpy.arange(2.3125,42,0.3125) and no group embedding. Last bin is a catch-all bin. The probabilities should sum up to 1. To use distograms, you have to run predict_with_crosslinks.py with the --distograms flag.
+
+Distograms can also be given as a space-separated file with the following format:
+
+residueFrom residueTo 1..128
+```
+128 163 0.05 0.05 0.05 0.05 ...
+147 77 0.01 0.015 0.05 0.05 ...
+147 41 0.04 0.1 0.05 0.052 ...
+```
+residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). Columns 2-130 contain the probability for each bin in numpy.arange(2.3125,42,0.3125). Each restraint can have a different distribution, any uncertainty has to be encoded in the distribution. There is no additional FDR parameter.
 
 ## MSA subsampling
 

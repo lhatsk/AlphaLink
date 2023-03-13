@@ -282,7 +282,7 @@ def list_files_with_extensions(dir, extensions):
 
 
 
-def load_crosslinks(crosslink_csv, fdr, seq):
+def load_crosslinks(crosslink_csv, fdr, seq, distograms=False):
     links = np.loadtxt(crosslink_csv,delimiter=',')
 
     n = len(seq)
@@ -291,25 +291,30 @@ def load_crosslinks(crosslink_csv, fdr, seq):
     grouping = np.zeros((n,n,1))
 
     groups = np.arange(len(links))+1 # 0th group is no crosslink
-    
-    if links.shape[1] == 3:
-        for i_, (i,j,fdr) in enumerate(links):
-            i = int(i) - 1 
-            j = int(j) - 1
-            crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
-            grouping[i,j,0] = grouping[j,i,0] = groups[i_]
 
+    if distograms:
+        crosslinks = np.zeros((n,n,128))
+        for row in links:
+            i = int(row[0]) - 1
+            j = int(row[1]) - 1
+            crosslinks[i,j] = crosslinks[j,i] = row[2:]
     else:
-        for i_, (i,j) in enumerate(links):
-            i = int(i) - 1
-            j = int(j) - 1
-            crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
-            grouping[i,j,0] = grouping[j,i,0] = groups[i_]
+        if links.shape[1] == 3:
+            for i_, (i,j,fdr) in enumerate(links):
+                i = int(i) - 1 
+                j = int(j) - 1
+                crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
+                grouping[i,j,0] = grouping[j,i,0] = groups[i_]
+        else:
+            for i_, (i,j) in enumerate(links):
+                i = int(i) - 1
+                j = int(j) - 1
+                crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
+                grouping[i,j,0] = grouping[j,i,0] = groups[i_]
     
     logger.info(
-        f"Loaded {np.sum(crosslinks > 0) // 2} crosslinks..."
+        f"Loaded {np.sum(np.max(crosslinks,axis=-1) > 0) // 2} restraints..."
     )
-    
 
     return crosslinks, grouping
 
@@ -388,9 +393,12 @@ def main(args):
     if args.crosslinks.endswith('.pt'):
         crosslinks = torch.load(args.crosslinks)
         feature_dict['xl'] = crosslinks['xl']
-        feature_dict['xl_grouping'] = crosslinks['grouping']
+        if args.distograms:
+            feature_dict['xl_grouping'] = np.zeros((crosslinks['xl'].shape[0], crosslinks['xl'].shape[1],1))
+        else:
+            feature_dict['xl_grouping'] = crosslinks['grouping']
     elif args.crosslinks.endswith('.csv'):
-        crosslinks, grouping = load_crosslinks(args.crosslinks, args.fdr, seq)
+        crosslinks, grouping = load_crosslinks(args.crosslinks, args.fdr, seq, args.distograms)
         feature_dict['xl'] = crosslinks
         feature_dict['xl_grouping'] = grouping
     else:
