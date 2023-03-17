@@ -46,8 +46,8 @@ restraints = np.genfromtxt(args.infile,
 distogram = []
 for line in restraints:
     #convert to 0-based residue index
-    res_from_0 = line["From"] - 1
-    res_to_0 = line["To"] - 1
+    res_from_0 = line["From"] #- 1
+    res_to_0 = line["To"] #- 1
     if line["type"] == "normal":
         sample = np.random.normal(line["mu"], line["sigma"], size=10000)
     elif line["type"] == "log-normal":
