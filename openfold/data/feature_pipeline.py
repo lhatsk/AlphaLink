@@ -40,10 +40,11 @@ def np_to_tensor_dict(
     Returns:
         A dictionary of features mapping feature names to features. Only the given
         features are returned, all other ones are filtered out.
-    """
+    """ 
     tensor_dict = {
         k: torch.tensor(v) for k, v in np_example.items() if k in features
     }
+
     return tensor_dict
 
 
@@ -91,6 +92,21 @@ def np_example_to_features(
             tensor_dict,
             cfg.common,
             cfg[mode],
+        )
+
+    if mode == "train":
+        p = torch.rand(1).item()
+        use_clamped_fape_value = float(p < cfg.supervised.clamp_prob)
+        features["use_clamped_fape"] = torch.full(
+            size=[cfg.common.max_recycling_iters + 1],
+            fill_value=use_clamped_fape_value,
+            dtype=torch.float32,
+        )
+    else:
+        features["use_clamped_fape"] = torch.full(
+            size=[cfg.common.max_recycling_iters + 1],
+            fill_value=0.0,
+            dtype=torch.float32,
         )
 
     return {k: v for k, v in features.items()}

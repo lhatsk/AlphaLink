@@ -43,9 +43,15 @@ def softmax_cross_entropy(logits, labels):
 
 
 def sigmoid_cross_entropy(logits, labels):
+    logits_dtype = logits.dtype
+    logits = logits.double()
+    labels = labels.double()
     log_p = torch.nn.functional.logsigmoid(logits)
-    log_not_p = torch.nn.functional.logsigmoid(-logits)
-    loss = -labels * log_p - (1 - labels) * log_not_p
+    # log_p = torch.log(torch.sigmoid(logits))
+    log_not_p = torch.nn.functional.logsigmoid(-1 * logits)
+    # log_not_p = torch.log(torch.sigmoid(-logits))
+    loss = (-1. * labels) * log_p - (1. - labels) * log_not_p
+    loss = loss.to(dtype=logits_dtype)
     return loss
 
 
@@ -84,6 +90,31 @@ def compute_fape(
     l1_clamp_distance: Optional[float] = None,
     eps=1e-8,
 ) -> torch.Tensor:
+    """
+        Computes FAPE loss.
+
+        Args:
+            pred_frames:
+                [*, N_frames] Rigid object of predicted frames
+            target_frames:
+                [*, N_frames] Rigid object of ground truth frames
+            frames_mask:
+                [*, N_frames] binary mask for the frames
+            pred_positions:
+                [*, N_pts, 3] predicted atom positions
+            target_positions:
+                [*, N_pts, 3] ground truth positions
+            positions_mask:
+                [*, N_pts] positions mask
+            length_scale:
+                Length scale by which the loss is divided
+            l1_clamp_distance:
+                Cutoff above which distance errors are disregarded
+            eps:
+                Small value used to regularize denominators
+        Returns:
+            [*] loss tensor
+    """
     # [*, N_frames, N_pts, 3]
     local_pred_pos = pred_frames.invert()[..., None].apply(
         pred_positions[..., None, :, :],
@@ -266,6 +297,29 @@ def supervised_chi_loss(
     eps=1e-6,
     **kwargs,
 ) -> torch.Tensor:
+    """
+        Implements Algorithm 27 (torsionAngleLoss)
+
+        Args:
+            angles_sin_cos:
+                [*, N, 7, 2] predicted angles
+            unnormalized_angles_sin_cos:
+                The same angles, but unnormalized
+            aatype:
+                [*, N] residue indices
+            seq_mask:
+                [*, N] sequence mask
+            chi_mask:
+                [*, N, 7] angle mask
+            chi_angles_sin_cos:
+                [*, N, 7, 2] ground truth angles
+            chi_weight:
+                Weight for the angle component of the loss
+            angle_norm_weight:
+                Weight for the normalization component of the loss
+        Returns:
+            [*] loss tensor
+    """
     pred_angles = angles_sin_cos[..., 3:, :]
     residue_type_one_hot = torch.nn.functional.one_hot(
         aatype,
@@ -286,10 +340,12 @@ def supervised_chi_loss(
         (true_chi_shifted - pred_angles) ** 2, dim=-1
     )
     sq_chi_error = torch.minimum(sq_chi_error, sq_chi_error_shifted)
+    
     # The ol' switcheroo
     sq_chi_error = sq_chi_error.permute(
         *range(len(sq_chi_error.shape))[1:-2], 0, -2, -1
     )
+
     sq_chi_loss = masked_mean(
         chi_mask[..., None, :, :], sq_chi_error, dim=(-1, -2, -3)
     )
@@ -584,9 +640,7 @@ def compute_tm(
     )
 
     bin_centers = _calculate_bin_centers(boundaries)
-    torch.sum(residue_weights)
-    n = logits.shape[-2]
-    clipped_n = max(n, 19)
+    clipped_n = max(torch.sum(residue_weights), 19)
 
     d0 = 1.24 * (clipped_n - 15) ** (1.0 / 3) - 1.8
 
@@ -597,7 +651,9 @@ def compute_tm(
 
     normed_residue_mask = residue_weights / (eps + residue_weights.sum())
     per_alignment = torch.sum(predicted_tm_term * normed_residue_mask, dim=-1)
+
     weighted = per_alignment * residue_weights
+     
     argmax = (weighted == torch.max(weighted)).nonzero()[0]
     return per_alignment[tuple(argmax)]
 
@@ -1422,13 +1478,13 @@ def experimentally_resolved_loss(
     loss = torch.sum(errors * atom37_atom_exists, dim=-1)
     loss = loss / (eps + torch.sum(atom37_atom_exists, dim=(-1, -2)))
     loss = torch.sum(loss, dim=-1)
-
+    
     loss = loss * (
         (resolution >= min_resolution) & (resolution <= max_resolution)
     )
 
     loss = torch.mean(loss)
-
+ 
     return loss
 
 
@@ -1465,48 +1521,14 @@ def masked_msa_loss(logits, true_msa, bert_mask, eps=1e-8, **kwargs):
     return loss
 
 
-def compute_drmsd(structure_1, structure_2, mask=None):
-    if(mask is not None):
-        structure_1 = structure_1 * mask[..., None]
-        structure_2 = structure_2 * mask[..., None]
-
-    d1 = structure_1[..., :, None, :] - structure_1[..., None, :, :]
-    d2 = structure_2[..., :, None, :] - structure_2[..., None, :, :]
-
-    d1 = d1 ** 2
-    d2 = d2 ** 2
-
-    d1 = torch.sqrt(torch.sum(d1, dim=-1))
-    d2 = torch.sqrt(torch.sum(d2, dim=-1))
-
-    drmsd = d1 - d2
-    drmsd = drmsd ** 2
-    drmsd = torch.sum(drmsd, dim=(-1, -2))
-    n = d1.shape[-1] if mask is None else torch.sum(mask, dim=-1)
-    drmsd = drmsd * (1 / (n * (n - 1)))
-    drmsd = torch.sqrt(drmsd)
-
-    return drmsd
-
-
-def compute_drmsd_np(structure_1, structure_2, mask=None):
-    structure_1 = torch.tensor(structure_1)
-    structure_2 = torch.tensor(structure_2)
-    if(mask is not None):
-        mask = torch.tensor(mask)
-
-    return compute_drmsd(structure_1, structure_2, mask)
-
-
 class AlphaFoldLoss(nn.Module):
     """Aggregation of the various losses described in the supplement"""
-
     def __init__(self, config):
         super(AlphaFoldLoss, self).__init__()
         self.config = config
 
-    def forward(self, out, batch):
-        if "violation" not in out.keys() and self.config.violation.weight:
+    def forward(self, out, batch, _return_breakdown=False):
+        if "violation" not in out.keys():
             out["violation"] = find_structural_violations(
                 batch,
                 out["sm"]["positions"][-1],
@@ -1535,10 +1557,10 @@ class AlphaFoldLoss(nn.Module):
                 batch,
                 self.config.fape,
             ),
-            "lddt": lambda: lddt_loss(
+            "plddt_loss": lambda: lddt_loss(
                 logits=out["lddt_logits"],
                 all_atom_pred_pos=out["final_atom_positions"],
-                **{**batch, **self.config.lddt},
+                **{**batch, **self.config.plddt_loss},
             ),
             "masked_msa": lambda: masked_msa_loss(
                 logits=out["masked_msa_logits"],
@@ -1553,53 +1575,40 @@ class AlphaFoldLoss(nn.Module):
                 out["violation"],
                 **batch,
             ),
-            "tm": lambda: tm_loss(
-                logits=out["tm_logits"],
-                **{**batch, **out, **self.config.tm},
-            ),
         }
 
+        if(self.config.tm.enabled):
+            loss_fns["tm"] = lambda: tm_loss(
+                logits=out["tm_logits"],
+                **{**batch, **out, **self.config.tm},
+            )
+
         cum_loss = 0.
+        losses = {}
         for loss_name, loss_fn in loss_fns.items():
             weight = self.config[loss_name].weight
-            if weight:
-                loss = loss_fn()
-                
-                if(torch.isnan(loss) or torch.isinf(loss)):
-                    logging.warning(f"{loss_name} loss is NaN. Skipping...")
-                    loss = loss.new_tensor(0., requires_grad=True)
-                cum_loss = cum_loss + weight * loss
+            loss = loss_fn()
+            if(torch.isnan(loss) or torch.isinf(loss)):
+                #for k,v in batch.items():
+                #    if(torch.any(torch.isnan(v)) or torch.any(torch.isinf(v))):
+                #        logging.warning(f"{k}: is nan")
+                #logging.warning(f"{loss_name}: {loss}")
+                logging.warning(f"{loss_name} loss is NaN. Skipping...")
+                loss = loss.new_tensor(0., requires_grad=True)
+            cum_loss = cum_loss + weight * loss
+            losses[loss_name] = loss.detach().clone()
 
+        losses["unscaled_loss"] = cum_loss.detach().clone()
+
+        # Scale the loss by the square root of the minimum of the crop size and
+        # the (average) sequence length. See subsection 1.9.
         seq_len = torch.mean(batch["seq_length"].float())
         crop_len = batch["aatype"].shape[-1]
         cum_loss = cum_loss * torch.sqrt(min(seq_len, crop_len))
 
-        return cum_loss
+        losses["loss"] = cum_loss.detach().clone()
 
-class EvaluatorLoss(nn.Module):
-    """Aggregation of the various losses described in the supplement"""
-
-    def __init__(self, config):
-        super(EvaluatorLoss, self).__init__()
-        self.config = config
-
-    def forward(self, out, batch):
-        if "renamed_atom14_gt_positions" not in out.keys():
-            batch.update(
-                compute_renamed_ground_truth(
-                    batch,
-                    out["sm"]["positions"][-1],
-                )
-            )
-
-        loss = lddt_loss(
-                logits=out["lddt_logits"],
-                all_atom_pred_pos=out["final_atom_positions"],
-                **{**batch, **self.config.lddt},
-            )
-
-        if(torch.isnan(loss) or torch.isinf(loss)):
-            logging.warning(f"{loss_name} loss is NaN. Skipping...")
-            return 0
-        else:
-            return loss
+        if(not _return_breakdown):
+            return cum_loss
+        
+        return cum_loss, losses

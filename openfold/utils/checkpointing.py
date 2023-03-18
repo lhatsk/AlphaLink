@@ -11,21 +11,39 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
+from typing import Any, Tuple, List, Callable, Optional
 
-import deepspeed
+deepspeed_is_installed = importlib.util.find_spec("deepspeed") is not None
+if(deepspeed_is_installed):
+    import deepspeed
+
 import torch
 import torch.utils.checkpoint
-from typing import Any, Tuple, List, Callable
 
 
 BLOCK_ARG = Any
 BLOCK_ARGS = List[BLOCK_ARG]
 
+
+def get_checkpoint_fn():
+    deepspeed_is_configured = (
+        deepspeed_is_installed and
+        deepspeed.checkpointing.is_configured()
+    )
+    if(deepspeed_is_configured):
+        checkpoint = deepspeed.checkpointing.checkpoint
+    else:
+        checkpoint = torch.utils.checkpoint.checkpoint
+
+    return checkpoint
+
+
 @torch.jit.ignore
 def checkpoint_blocks(
     blocks: List[Callable],
     args: BLOCK_ARGS,
-    blocks_per_ckpt: int,
+    blocks_per_ckpt: Optional[int],
 ) -> BLOCK_ARGS:
     """
     Chunk a list of blocks and run each chunk with activation
@@ -63,15 +81,12 @@ def checkpoint_blocks(
     # Avoids mishaps when the blocks take just one argument
     args = wrap(args)
 
-    if blocks_per_ckpt is None:
+    if blocks_per_ckpt is None or not torch.is_grad_enabled():
         return exec(blocks, args)
     elif blocks_per_ckpt < 1 or blocks_per_ckpt > len(blocks):
         raise ValueError("blocks_per_ckpt must be between 1 and len(blocks)")
 
-    if(deepspeed.checkpointing.is_configured()):
-        checkpoint = deepspeed.checkpointing.checkpoint
-    else:
-        checkpoint = torch.utils.checkpoint.checkpoint
+    checkpoint = get_checkpoint_fn() 
 
     for s in range(0, len(blocks), blocks_per_ckpt):
         e = s + blocks_per_ckpt

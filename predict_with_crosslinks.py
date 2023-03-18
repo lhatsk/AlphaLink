@@ -13,26 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
-from copy import deepcopy
-from datetime import date
 import logging
 import math
 import numpy as np
 import os
+
+from openfold.utils.script_utils import load_models_from_command_line, parse_fasta, run_model, prep_output, \
+    update_timings, relax_protein
 
 logging.basicConfig()
 logger = logging.getLogger(__file__)
 logger.setLevel(level=logging.INFO)
 
 import pickle
-from pytorch_lightning.utilities.deepspeed import (
-    convert_zero_checkpoint_to_fp32_state_dict
-)
+
 import random
-import sys
 import time
 import torch
-import re
 
 torch_versions = torch.__version__.split(".")
 torch_major_version = int(torch_versions[0])
@@ -46,155 +43,108 @@ if(
 
 torch.set_grad_enabled(False)
 
-from openfold.config_crosslinks import model_config, NUM_RES
+from openfold.config import model_config
 from openfold.data import templates, feature_pipeline, data_pipeline
-from openfold.model.model import AlphaFold
-from openfold.model.torchscript import script_preset_
 from openfold.np import residue_constants, protein
 import openfold.np.relax.relax as relax
-from openfold.utils.import_weights import (
-    import_jax_weights_,
-)
+
 from openfold.utils.tensor_utils import (
     tensor_tree_map,
 )
-
+from openfold.utils.trace_utils import (
+    pad_feature_dict_seq,
+    trace_model_,
+)
 from scripts.utils import add_data_args
 
-from openfold.data.msa_subsampling import subsample_msa_sequentially, get_eff
 
 TRACING_INTERVAL = 50
 
 
-def precompute_alignments(tag, seq, alignment_dir, args):
-    tmp_fasta_path = os.path.join(args.output_dir, f"tmp_{os.getpid()}.fasta")
-    with open(tmp_fasta_path, "w") as fp:
-        fp.write(f">{tag}\n{seq}")
+import math
+from scipy.spatial.distance import pdist, squareform
 
-    local_alignment_dir = os.path.join(alignment_dir, tag)
+# adapted from: https://github.com/sokrypton/GREMLIN_CPP
 
-    if(args.use_precomputed_alignments is None and not os.path.isdir(local_alignment_dir)):
-        logger.info(f"Generating alignments for {tag}...")
-            
-        os.makedirs(local_alignment_dir)
+def get_eff(msa, eff_cutoff=0.8): # eff_cutoff=0.62 for metapsicov
+    if msa.ndim == 3: msa = msa.argmax(-1)
+    # pairwise identity
+    msa_sm = 1.0 - squareform(pdist(msa,"hamming"))
+    # weight for each sequence
+    msa_w = (msa_sm >= eff_cutoff).astype(float)
+    msa_w = 1/np.sum(msa_w,-1)
 
-        alignment_runner = data_pipeline.AlignmentRunner(
-            jackhmmer_binary_path=args.jackhmmer_binary_path,
-            hhblits_binary_path=args.hhblits_binary_path,
-            hhsearch_binary_path=args.hhsearch_binary_path,
-            uniref90_database_path=args.uniref90_database_path,
-            mgnify_database_path=args.mgnify_database_path,
-            bfd_database_path=args.bfd_database_path,
-            uniclust30_database_path=args.uniclust30_database_path,
-            pdb70_database_path=args.pdb70_database_path,
-            no_cpus=args.cpus,
-        )
-        alignment_runner.run(
-            tmp_fasta_path, local_alignment_dir
-        )
-    else:
-        logger.info(
-            f"Using precomputed alignments for {tag} at {alignment_dir}..."
-        )
+    return msa_w
 
-    # Remove temporary FASTA file
-    os.remove(tmp_fasta_path)
+
+# if cap_msa is enabled, we bypass the ExtraMSAStack, helps with determinism for |MSA| < 128
+def subsample_msa_sequentially(msa, neff=10, eff_cutoff=0.8, cap_msa=True):
+    if msa.shape[0] == 1:
+        return np.array([0])
+
+    indices = [0]
+
+    idx = np.arange(msa.shape[0] - 1) + 1
+    np.random.shuffle(idx)
+
+    new = [msa[0]]
+
+    for i in idx:
+        new.append(msa[i])
+        indices.append(i)
+        neff_ = get_eff(np.array(new), eff_cutoff=eff_cutoff).sum()
+
+        if cap_msa:
+            if neff_ > neff or len(new) > 126:
+                new.pop()
+                indices.pop()
+                break
+        else:
+            if neff_ > neff:
+                new.pop()
+                indices.pop()
+                break
+
+    return np.array(indices)
+
+
+def precompute_alignments(tags, seqs, alignment_dir, args):
+    for tag, seq in zip(tags, seqs):
+        tmp_fasta_path = os.path.join(args.output_dir, f"tmp_{os.getpid()}.fasta")
+        with open(tmp_fasta_path, "w") as fp:
+            fp.write(f">{tag}\n{seq}")
+
+        local_alignment_dir = os.path.join(alignment_dir, tag)
+        if(args.use_precomputed_alignments is None and not os.path.isdir(local_alignment_dir)):
+            logger.info(f"Generating alignments for {tag}...")
+                
+            os.makedirs(local_alignment_dir)
+
+            alignment_runner = data_pipeline.AlignmentRunner(
+                jackhmmer_binary_path=args.jackhmmer_binary_path,
+                hhblits_binary_path=args.hhblits_binary_path,
+                hhsearch_binary_path=args.hhsearch_binary_path,
+                uniref90_database_path=args.uniref90_database_path,
+                mgnify_database_path=args.mgnify_database_path,
+                bfd_database_path=args.bfd_database_path,
+                uniclust30_database_path=args.uniclust30_database_path,
+                pdb70_database_path=args.pdb70_database_path,
+                no_cpus=args.cpus,
+            )
+            alignment_runner.run(
+                tmp_fasta_path, local_alignment_dir
+            )
+        else:
+            logger.info(
+                f"Using precomputed alignments for {tag} at {alignment_dir}..."
+            )
+
+        # Remove temporary FASTA file
+        os.remove(tmp_fasta_path)
 
 
 def round_up_seqlen(seqlen):
     return int(math.ceil(seqlen / TRACING_INTERVAL)) * TRACING_INTERVAL
-
-
-def run_model(model, batch, tag, args):
-    with torch.no_grad(): 
-        # Disable templates if there aren't any in the batch
-        model.config.template.enabled = model.config.template.enabled and any([
-            "template_" in k for k in batch
-        ])
-
-        logger.info(f"Running inference for {tag}...")
-        t = time.perf_counter()
-        out = model(batch)
-        inference_time = time.perf_counter() - t
-        logger.info(f"Inference time: {inference_time}")
-   
-    return out
-
-
-def prep_output(out, batch, feature_dict, feature_processor, args):
-    plddt = out["plddt"]
-    mean_plddt = np.mean(plddt)
-    
-    plddt_b_factors = np.repeat(
-        plddt[..., None], residue_constants.atom_type_num, axis=-1
-    )
-
-    if(args.subtract_plddt):
-        plddt_b_factors = 100 - plddt_b_factors
-
-    # Prep protein metadata
-    template_domain_names = []
-    template_chain_index = None
-    if(feature_processor.config.common.use_templates and "template_domain_names" in feature_dict):
-        template_domain_names = [
-            t.decode("utf-8") for t in feature_dict["template_domain_names"]
-        ]
-
-        # This works because templates are not shuffled during inference
-        template_domain_names = template_domain_names[
-            :feature_processor.config.predict.max_templates
-        ]
-
-        if("template_chain_index" in feature_dict):
-            template_chain_index = feature_dict["template_chain_index"]
-            template_chain_index = template_chain_index[
-                :feature_processor.config.predict.max_templates
-            ]
-
-    no_recycling = feature_processor.config.common.max_recycling_iters
-    remark = ', '.join([
-        f"no_recycling={no_recycling}",
-        f"max_templates={feature_processor.config.predict.max_templates}",
-        f"config_preset=model_5_ptm",
-    ])
-
-    # For multi-chain FASTAs
-    ri = feature_dict["residue_index"]
-    chain_index = (ri - np.arange(ri.shape[0])) / args.multimer_ri_gap
-    chain_index = chain_index.astype(np.int64)
-    cur_chain = 0
-    prev_chain_max = 0
-    for i, c in enumerate(chain_index):
-        if(c != cur_chain):
-            cur_chain = c
-            prev_chain_max = i + cur_chain * args.multimer_ri_gap
-
-        batch["residue_index"][i] -= prev_chain_max
-
-    unrelaxed_protein = protein.from_prediction(
-        features=batch,
-        result=out,
-        b_factors=plddt_b_factors,
-        chain_index=chain_index,
-        remark=remark,
-        parents=template_domain_names,
-        parents_chain_index=template_chain_index,
-    )
-
-    return unrelaxed_protein
-
-
-def parse_fasta(data):
-    data = re.sub('>$', '', data, flags=re.M)
-    lines = [
-        l.replace('\n', '')
-        for prot in data.split('>') for l in prot.strip().split('\n', 1)
-    ][1:]
-    tags, seqs = lines[::2], lines[1::2]
-
-    tags = [t.split()[0] for t in tags]
-
-    return tags, seqs
 
 
 def generate_feature_dict(
@@ -229,104 +179,38 @@ def generate_feature_dict(
 
     return feature_dict
 
-
-def get_model_basename(model_path):
-    return os.path.splitext(
-                os.path.basename(
-                    os.path.normpath(model_path)
-                )
-            )[0]
-
-
-def make_output_directory(output_dir, model_name, multiple_model_mode):
-    if multiple_model_mode:
-        prediction_dir = os.path.join(output_dir, "predictions", model_name)
-    else:
-        prediction_dir = os.path.join(output_dir, "predictions")
-    os.makedirs(prediction_dir, exist_ok=True)
-    return prediction_dir
-
-
-def count_models_to_evaluate(openfold_checkpoint_path, jax_param_path):
-    model_count = 0
-    if openfold_checkpoint_path:
-        model_count += len(openfold_checkpoint_path.split(","))
-    if jax_param_path:
-        model_count += len(jax_param_path.split(","))
-    return model_count
-
-
-def load_models_from_command_line(args, config):
-    # Create the output directory
-
-    model = AlphaFold(config)
-    model = model.eval()
-    checkpoint_basename = get_model_basename(args.checkpoint_path)
-
-    sd = torch.load(args.checkpoint_path)['ema']['params']
-    # sd = {("model." + k):v for k,v in sd.items()}
-
-    model.load_state_dict(sd)
-    
-    model = model.to(args.model_device)
-    logger.info(
-        f"Loaded OpenFold parameters at {args.checkpoint_path}..."
-    )
-    output_directory = make_output_directory(args.output_dir, checkpoint_basename, False)
-
-    return model, output_directory
-
-
 def list_files_with_extensions(dir, extensions):
     return [f for f in os.listdir(dir) if f.endswith(extensions)]
 
-
-
-def load_crosslinks(crosslink_csv, fdr, seq, distograms=False):
-    links = np.loadtxt(crosslink_csv,delimiter=',')
+def load_distogram(distogram_csv, seq):
+    links = np.loadtxt(crosslink_csv)#,delimiter=',')
 
     n = len(seq)
 
-    crosslinks = np.zeros((n,n,1))
-    grouping = np.zeros((n,n,1))
+    distogram = np.zeros((n,n,128))
 
-    groups = np.arange(len(links))+1 # 0th group is no crosslink
-
-    if distograms:
-        crosslinks = np.zeros((n,n,128))
-        for row in links:
-            i = int(row[0]) - 1
-            j = int(row[1]) - 1
-            crosslinks[i,j] = crosslinks[j,i] = row[2:]
-    else:
-        if links.shape[1] == 3:
-            for i_, (i,j,fdr) in enumerate(links):
-                i = int(i) - 1 
-                j = int(j) - 1
-                crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
-                grouping[i,j,0] = grouping[j,i,0] = groups[i_]
-        else:
-            for i_, (i,j) in enumerate(links):
-                i = int(i) - 1
-                j = int(j) - 1
-                crosslinks[i,j,0] = crosslinks[j,i,0] = 1 - fdr
-                grouping[i,j,0] = grouping[j,i,0] = groups[i_]
+    for row in links:
+        i = int(row[0]) - 1
+        j = int(row[1]) - 1
+        distogram[i,j] = distogram[j,i] = row[2:]
     
     logger.info(
-        f"Loaded {np.sum(np.max(crosslinks,axis=-1) > 0) // 2} restraints..."
+        f"Loaded {np.sum(np.max(distogram,axis=-1) > 0) // 2} restraints..."
     )
 
-    return crosslinks, grouping
-
+    return distogram
 
 def main(args):
     # Create the output directory
     os.makedirs(args.output_dir, exist_ok=True)
 
-    config = model_config('model_5_ptm')
+    config = model_config(args.config_preset, long_sequence_inference=args.long_sequence_inference)
     
-    if args.distograms:
-        config.model.xl_embedder.distograms = True
+    if(args.trace_model):
+        if(not config.data.predict.fixed_size):
+            raise ValueError(
+                "Tracing requires that fixed_size mode be enabled in the config"
+            )
     
     # template_featurizer = templates.TemplateHitFeaturizer(
     #     mmcif_dir=args.template_mmcif_dir,
@@ -338,7 +222,7 @@ def main(args):
     # )
 
     data_processor = data_pipeline.DataPipeline(
-        template_featurizer=None,
+        template_featurizer=None, #template_featurizer,
     )
 
     output_dir_base = args.output_dir
@@ -357,128 +241,152 @@ def main(args):
     else:
         alignment_dir = args.use_precomputed_alignments
 
+    tag_list = []
+    seq_list = []
+    for fasta_file in list_files_with_extensions(args.fasta_dir, (".fasta", ".fa")):
+        # Gather input sequences
+        with open(os.path.join(args.fasta_dir, fasta_file), "r") as fp:
+            data = fp.read()
+    
+        tags, seqs = parse_fasta(data)
+        # assert len(tags) == len(set(tags)), "All FASTA tags must be unique"
+        tag = '-'.join(tags)
 
-    with open(args.fasta, "r") as fp:
-        data = fp.read()
+        tag_list.append((tag, tags))
+        seq_list.append(seqs)
 
-    tag, seq = parse_fasta(data)
+    seq_sort_fn = lambda target: sum([len(s) for s in target[1]])
+    sorted_targets = sorted(zip(tag_list, seq_list), key=seq_sort_fn)
+    feature_dicts = {}
+    model_generator = load_models_from_command_line(
+        config,
+        args.model_device,
+        args.checkpoint_path,
+        None,
+        args.output_dir)
+    for model, output_directory in model_generator:
+        cur_tracing_interval = 0
+        for (tag, tags), seqs in sorted_targets:
+            output_name = f'{tag}_{args.config_preset}'
+            if args.output_postfix is not None:
+                output_name = f'{output_name}_{args.output_postfix}'
+    
+            if args.features:
+                feature_dict = pickle.load(open(args.features,'rb'))
+            else:
+                # Does nothing if the alignments have already been computed
+                precompute_alignments(tags, seqs, alignment_dir, args)
+            
+                feature_dict = feature_dicts.get(tag, None)
+                if(feature_dict is None):
+                    feature_dict = generate_feature_dict(
+                        tags,
+                        seqs,
+                        alignment_dir,
+                        data_processor,
+                        args,
+                    )
 
-    tag = tag[0]
-    seq = seq[0]
+                    if(args.trace_model):
+                        n = feature_dict["aatype"].shape[-2]
+                        rounded_seqlen = round_up_seqlen(n)
+                        feature_dict = pad_feature_dict_seq(
+                            feature_dict, rounded_seqlen,
+                        )
 
-    # feature_dicts = {}
+                    feature_dicts[tag] = feature_dict
 
-    model, output_directory = load_models_from_command_line(args, config)
+            if args.crosslinks.endswith('.pt'):
+                crosslinks = torch.load(args.crosslinks)
+                feature_dict['xl'] = crosslinks['xl']
+            elif args.crosslinks.endswith('.csv'):
+                crosslinks = load_distogram(args.crosslinks, seq)
+                feature_dict['xl'] = crosslinks
+            else:
+                print("Crosslinks need to be either given as a CSV or already as a tensor")
+                sys.exit(0)
 
-    cur_tracing_interval = 0
+            # subsample MSAs to specified Neff
+            msa = feature_dict['msa']
 
-    output_name = f'{tag}_model_5_ptm_crosslinks'
-    if args.output_postfix is not None:
-        output_name = f'{output_name}_{args.output_postfix}'
+            if args.neff:
+                logger.info(
+                    f"Subsampling MSA to Neff={args.neff}..."
+                )
+                indices = subsample_msa_sequentially(msa, neff=args.neff)
+                feature_dict['msa'] = msa[indices]
+                feature_dict['deletion_matrix'] = feature_dict['deletion_matrix'][indices]
 
-    if args.features:
-        feature_dict = pickle.load(open(args.features,'rb'))
-    else:
-        # Does nothing if the alignments have already been computed
-        precompute_alignments(tag, seq, alignment_dir, args)
-        feature_dict = generate_feature_dict(
-            [tag],
-            [seq],
-            alignment_dir,
-            data_processor,
-            args,
-        )
+            processed_feature_dict = feature_processor.process_features(
+                feature_dict, mode='predict',
+            )
 
+            processed_feature_dict = {
+                k:torch.as_tensor(v, device=args.model_device) 
+                for k,v in processed_feature_dict.items()
+            }
 
-    if args.crosslinks.endswith('.pt'):
-        crosslinks = torch.load(args.crosslinks)
-        feature_dict['xl'] = crosslinks['xl']
-        if args.distograms:
-            feature_dict['xl_grouping'] = np.zeros((crosslinks['xl'].shape[0], crosslinks['xl'].shape[1],1))
-        else:
-            feature_dict['xl_grouping'] = crosslinks['grouping']
-    elif args.crosslinks.endswith('.csv'):
-        crosslinks, grouping = load_crosslinks(args.crosslinks, args.fdr, seq, args.distograms)
-        feature_dict['xl'] = crosslinks
-        feature_dict['xl_grouping'] = grouping
-    else:
-        print("Crosslinks need to be either given as a CSV or already as a tensor")
-        sys.exit(0)
+            if(args.trace_model):
+                if(rounded_seqlen > cur_tracing_interval):
+                    logger.info(
+                        f"Tracing model at {rounded_seqlen} residues..."
+                    )
+                    t = time.perf_counter()
+                    trace_model_(model, processed_feature_dict)
+                    tracing_time = time.perf_counter() - t
+                    logger.info(
+                        f"Tracing time: {tracing_time}"
+                    )
+                    cur_tracing_interval = rounded_seqlen
 
+            out = run_model(model, processed_feature_dict, tag, args.output_dir)
 
-    # subsample MSAs to specified Neff
-    msa = feature_dict['msa']
+            # Toss out the recycling dimensions --- we don't need them anymore
+            processed_feature_dict = tensor_tree_map(
+                lambda x: np.array(x[..., -1].cpu()), 
+                processed_feature_dict
+            )
+            out = tensor_tree_map(lambda x: np.array(x.cpu()), out)
 
-    if args.neff:
-        logger.info(
-            f"Subsampling MSA to Neff={args.neff}..."
-        )
-        indices = subsample_msa_sequentially(msa, neff=args.neff)
-        feature_dict['msa'] = msa[indices]
-        feature_dict['deletion_matrix'] = feature_dict['deletion_matrix'][indices]
+            unrelaxed_protein = prep_output(
+                out, 
+                processed_feature_dict, 
+                feature_dict, 
+                feature_processor, 
+                args.config_preset,
+                args.multimer_ri_gap,
+                args.subtract_plddt
+            )
 
-    processed_feature_dict = feature_processor.process_features(
-        feature_dict, mode='predict',
-    )
+            unrelaxed_output_path = os.path.join(
+                output_directory, f'{output_name}_unrelaxed.pdb'
+            )
 
-    processed_feature_dict = {
-        k:torch.as_tensor(v, device=args.model_device) 
-        for k,v in processed_feature_dict.items()
-    }
+            with open(unrelaxed_output_path, 'w') as fp:
+                fp.write(protein.to_pdb(unrelaxed_protein))
 
-    out = run_model(model, processed_feature_dict, tag, args)
+            logger.info(f"Output written to {unrelaxed_output_path}...")
+            
+            if not args.skip_relaxation:
+                # Relax the prediction.
+                logger.info(f"Running relaxation on {unrelaxed_output_path}...")
+                relax_protein(config, args.model_device, unrelaxed_protein, output_directory, output_name)
 
-    # Toss out the recycling dimensions --- we don't need them anymore
-    processed_feature_dict = tensor_tree_map(
-        lambda x: np.array(x[..., -1].cpu()), 
-        processed_feature_dict
-    )
-    out = tensor_tree_map(lambda x: np.array(x.cpu()), out)
+            if args.save_outputs:
+                output_dict_path = os.path.join(
+                    output_directory, f'{output_name}_output_dict.pkl'
+                )
+                with open(output_dict_path, "wb") as fp:
+                    pickle.dump(out, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
-    plddt = out["plddt"]
-
-    plddt_b_factors = np.repeat(
-        plddt[..., None], residue_constants.atom_type_num, axis=-1
-    )
-
-    unrelaxed_protein = protein.from_prediction(
-        features=processed_feature_dict,
-        result=out,
-        b_factors=plddt_b_factors
-    )
-
-    unrelaxed_output_path = os.path.join(
-        output_directory, f'{output_name}_unrelaxed.pdb'
-    )
-
-
-    with open(unrelaxed_output_path, 'w') as fp:
-        fp.write(protein.to_pdb(unrelaxed_protein))
-
-    logger.info(f"Output written to {unrelaxed_output_path}...")
-
-    if not args.skip_relaxation:        
-        amber_relaxer = relax.AmberRelaxation(
-            **config.relax
-        )
-        
-        relaxed_pdb_str, _, _ = amber_relaxer.process(prot=unrelaxed_protein)
-
-        # Save the relaxed PDB.
-        relaxed_output_path = os.path.join(
-            output_directory, f'{output_name}_relaxed.pdb'
-        )
-        with open(relaxed_output_path, 'w') as fp:
-            fp.write(relaxed_pdb_str)
-        
-        logger.info(f"Relaxed output written to {relaxed_output_path}...")
+                logger.info(f"Model output written to {output_dict_path}...")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "fasta", type=str,
-        help="Path to FASTA file, one sequence per file"
+        "fasta_dir", type=str,
+        help="Path to directory containing FASTA files, one sequence per file"
     )
     parser.add_argument(
         "crosslinks", type=str,
@@ -487,7 +395,6 @@ if __name__ == "__main__":
         "--fdr", type=float, default=0.05,
         help="""Number of CPUs with which to run alignment tools"""
     )
-
     parser.add_argument(
         "--use_precomputed_alignments", type=str, default=None,
         help="""Path to alignment directory. If provided, alignment computation 
@@ -501,6 +408,10 @@ if __name__ == "__main__":
         "--model_device", type=str, default="cuda:0",
         help="""Name of the device on which to run the model. Any valid torch
              device name is accepted (e.g. "cpu", "cuda:0")"""
+    )
+    parser.add_argument(
+        "--config_preset", type=str, default="model_5_ptm",
+        help="""Name of a model config preset defined in openfold/config.py"""
     )
     parser.add_argument(
         "--checkpoint_path", type=str, default='resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt',
@@ -531,7 +442,7 @@ if __name__ == "__main__":
         help="""Postfix for output prediction filenames"""
     )
     parser.add_argument(
-        "--data_random_seed", type=int, default=None
+        "--data_random_seed", type=str, default=None
     )
     parser.add_argument(
         "--skip_relaxation", action="store_true", default=False,
@@ -541,9 +452,23 @@ if __name__ == "__main__":
         help="""MSAs are subsampled to specified Neff"""
     )
     parser.add_argument(
+        "--multimer_ri_gap", type=int, default=200,
+        help="""Residue index offset between multiple sequences, if provided"""
+    )
+    parser.add_argument(
+        "--trace_model", action="store_true", default=False,
+        help="""Whether to convert parts of each model to TorchScript.
+                Significantly improves runtime at the cost of lengthy
+                'compilation.' Useful for large batch jobs."""
+    )
+    parser.add_argument(
         "--subtract_plddt", action="store_true", default=False,
         help=""""Whether to output (100 - pLDDT) in the B-factor column instead
                  of the pLDDT itself"""
+    )
+    parser.add_argument(
+        "--long_sequence_inference", action="store_true", default=False,
+        help="""enable options to reduce memory usage at the cost of speed, helps longer sequences fit into GPU memory, see the README for details"""
     )
     add_data_args(parser)
     args = parser.parse_args()
