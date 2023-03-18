@@ -426,10 +426,6 @@ if __name__ == "__main__":
         help="Feature pickle"
     )
     parser.add_argument(
-        "--distograms", action="store_true", default=False,
-        help="Switch to distogram mode"
-    )
-    parser.add_argument(
         "--cpus", type=int, default=4,
         help="""Number of CPUs with which to run alignment tools"""
     )
