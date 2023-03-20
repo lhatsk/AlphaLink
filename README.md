@@ -3,7 +3,7 @@ _Figure: AlphaLink prediction (teal) of T1064 with simulated crosslinks (blue)_
 
 # AlphaLink
 
-AlphaLink predicts protein structures using deep learning given a sequence and a set of experimental contacts. It extends [OpenFold](https://github.com/aqlaboratory/openfold) with crosslinking MS data or other experimental distance restraint by explicitly incorporating them in the OpenFold architecture. The experimental distance restraints may be represented in one of two forms:
+[AlphaLink](https://www.nature.com/articles/s41587-023-01704-z) predicts protein structures using deep learning given a sequence and a set of experimental contacts. It extends [OpenFold](https://github.com/aqlaboratory/openfold) with crosslinking MS data or other experimental distance restraint by explicitly incorporating them in the OpenFold architecture. The experimental distance restraints may be represented in one of two forms:
 
 1. As contacts/upper bound distance restraints
 2. As distance distributions (distograms)
