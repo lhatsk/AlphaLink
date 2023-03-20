@@ -99,7 +99,7 @@ python make_ihm.py
 
 We eliminated all non-determinism (MSA masking), since with low Neff targets, different MSA masking can have a big effect.
 
-The models generated for the [AlphaLink paper]() are deposited in [ModelArchive](https://modelarchive.org/doi/10.5452/ma-rap-alink) and [PDB-Dev](https://pdb-dev.wwpdb.org/entry.html?PDBDEV_00000165). The restraints used in the modeling are available as supplementary tables to the AlphaLink paper.
+The models generated for the [AlphaLink paper](https://www.nature.com/articles/s41587-023-01704-z) are deposited in [ModelArchive](https://modelarchive.org/doi/10.5452/ma-rap-alink) and [PDB-Dev](https://pdb-dev.wwpdb.org/entry.html?PDBDEV_00000165). The restraints used in the modeling are available as supplementary tables to the AlphaLink paper.
 
 ## Copyright notice
 
@@ -112,6 +112,6 @@ replaces the original, more restrictive CC BY-NC 4.0 license as of January 2022.
 ## Citing this work
 
 Cite the AlphaLink paper:
-"Protein structure prediction with in-cell photo-crosslinking mass spectrometry and deep learning", Nat. Biotech. XXX doi:YYY .
+"Protein structure prediction with in-cell photo-crosslinking mass spectrometry and deep learning", Nat. Biotech. XXX doi:10.1038/s41587-023-01704-z.
 
 Any work that cites AlphaLink should also cite AlphaFold and OpenFold.
