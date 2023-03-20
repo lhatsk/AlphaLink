@@ -6,7 +6,7 @@ _Figure: AlphaLink prediction (teal) of T1064 with simulated crosslinks (blue)_
 AlphaLink predicts protein structures using deep learning given a sequence and a set of experimental contacts. It extends [OpenFold](https://github.com/aqlaboratory/openfold) with crosslinking MS data or other experimental distance restraint by explicitly incorporating them in the OpenFold architecture. The experimental distance restraints may be represented in one of two forms:
 
 1. As contacts/upper bound distance restraints
-2. As distance distributions (distograms) (flag --distograms)
+2. As distance distributions (distograms)
 
 For (1), we trained our network with 10 Angstrom Ca-Ca and show robust rejection of experimental noise and false restraints. The distogram representation (2) allows the user to input longer restraints, for example corresponding to crosslinkers with spacers like BS3 or DSS or to NMR PRE distance restraints.
 
@@ -64,7 +64,7 @@ python  predict_with_crosslinks.py nsp1/ nsp1/photoL_distogram.pt --features nsp
 
 Can be downloaded here: 
 
-https://www.dropbox.com/s/5jmb8pxmt5rr751/finetuning_model_5_ptm_distogram_1.0.pt.gz?dl=1
+https://www.dropbox.com/s/4abr8gfzlpulq4i/finetuning_model_5_ptm_distogram_1.0.pt.gz?dl=1
 
 They need to be unpacked (gunzip).
 
@@ -88,7 +88,7 @@ python make_ihm.py
 
 We eliminated all non-determinism (MSA masking), since with low Neff targets, different MSA masking can have a big effect.
 
-The models generated for the [AlphaLink paper]() are deposited in [ModelArchive](https://modelarchive.org/doi/10.5452/ma-rap-alink) and [PDB-Dev](https://pdb-dev.wwpdb.org/entry.html?PDBDEV_00000165). The restraints used in the modeling are available as supplementary tables to the AlphaLink paper.
+The models generated for the [AlphaLink paper](https://www.nature.com/articles/s41587-023-01704-z) are deposited in [ModelArchive](https://modelarchive.org/doi/10.5452/ma-rap-alink) and [PDB-Dev](https://pdb-dev.wwpdb.org/entry.html?PDBDEV_00000165). The restraints used in the modeling are available as supplementary tables to the AlphaLink paper.
 
 ## Copyright notice
 
@@ -101,7 +101,7 @@ replaces the original, more restrictive CC BY-NC 4.0 license as of January 2022.
 ## Citing this work
 
 Cite the AlphaLink paper:
-"Protein structure prediction with in-cell photo-crosslinking mass spectrometry and deep learning", Nat. Biotech. XXX doi:YYY .
+"Protein structure prediction with in-cell photo-crosslinking mass spectrometry and deep learning", Nat. Biotech. XXX doi:10.1038/s41587-023-01704-z .
 
 Any work that cites AlphaLink should also cite AlphaFold and OpenFold.
 
