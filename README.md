@@ -28,7 +28,7 @@ residueFrom residueTo FDR
 
 residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). FDR is between 0 and 1. CSV format is not supported for distograms.
 
-The software may then be run with models based on upper bound distance thresholds or using generalized distograms. Distograms have shape LxLx128 with the following binning: numpy.arange(2.3125,42,0.3125) and no group embedding. Last bin is a catch-all bin. The probabilities should sum up to 1. To use distograms, you have to run predict_with_crosslinks.py with the --distograms flag.
+The software may then be run with models based on upper bound distance thresholds or using generalized distograms. Distograms have shape LxLx128 with the following binning: numpy.arange(2.3125,42,0.3125) + a catch-all bin in the end for distances >= 42A and no group embedding. Last bin is a catch-all bin. The probabilities should sum up to 1. To use distograms, you have to run predict_with_crosslinks.py with the --distograms flag.
 
 Distograms can also be given as a space-separated file with the following format:
 
@@ -38,7 +38,7 @@ residueFrom residueTo 1..128
 147 77 0.01 0.015 0.05 0.05 ...
 147 41 0.04 0.1 0.05 0.052 ...
 ```
-residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). Columns 2-130 contain the probability for each bin in numpy.arange(2.3125,42,0.3125)- i.e. the probability of each bin in a distogram going from 2.3125 to 42 Angstrom. Each restraint can have a different distribution, any uncertainty has to be encoded in the distribution. There is no additional FDR parameter.
+residueFrom and residueTo are the residues crosslinked to each other (sequence numbering starts at 1). Columns 2-130 contain the probability for each bin in numpy.arange(2.3125,42,0.3125)- i.e. the probability of each bin in a distogram going from 2.3125 to 42 Angstrom. The 128th bin is a catch-all bin for distances >= 42. Each restraint can have a different distribution, any uncertainty has to be encoded in the distribution. There is no additional FDR parameter.
 
 Distance distributions for AlphaLink can be automatically generated from restraint lists with the script preprocessing_distributions.py.
 ```
