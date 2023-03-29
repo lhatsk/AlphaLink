@@ -283,7 +283,7 @@ def list_files_with_extensions(dir, extensions):
 
 
 def load_crosslinks(crosslink_csv, fdr, seq, distograms=False):
-    links = np.loadtxt(crosslink_csv,delimiter=',')
+    links = np.loadtxt(crosslink_csv)#,delimiter=',')
 
     n = len(seq)
 
