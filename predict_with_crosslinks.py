@@ -393,7 +393,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--fdr", type=float, default=0.05,
-        help="""Number of CPUs with which to run alignment tools"""
+        help="""Dataset-level false discovery rate (FDR), only used if link-level FDR is not provided"""
     )
     parser.add_argument(
         "--use_precomputed_alignments", type=str, default=None,
