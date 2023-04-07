@@ -27,3 +27,7 @@ RUN wget -q -P /opt/openfold/openfold/resources \
 RUN patch -p0 -d /opt/conda/lib/python3.7/site-packages/ < /opt/openfold/lib/openmm.patch
 WORKDIR /opt/openfold
 RUN python3 setup.py install
+
+COPY preprocessing_distributions.py /opt/openfold/
+COPY predict_with_crosslinks.py /opt/openfold/
+COPY contacts_to_distograms.py /opt/openfold/
