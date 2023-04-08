@@ -43,7 +43,11 @@ restraints = np.genfromtxt(args.infile,
                            dtype=None,
                            encoding=None)
 
+if len(restraints.shape) == 0:
+    restraints = np.array([restraints])
+
 distogram = []
+
 for line in restraints:
     #convert to 0-based residue index
     res_from_0 = line["From"] #- 1
@@ -57,8 +61,9 @@ for line in restraints:
         print(line)
         sys.exit()
 
-    n, bins, p = plt.hist(sample, bins=np.arange(2.3125, 42, 0.3125),
+    n, bins, p = plt.hist(sample, bins=np.arange(2.3125, 42.625, 0.3125),
                           density=True)
+    n /= np.sum(n)
     n = n.tolist()
     distogram.append([res_from_0, res_to_0]+list(n))
 
