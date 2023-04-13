@@ -476,6 +476,15 @@ def main(args):
         
         logger.info(f"Relaxed output written to {relaxed_output_path}...")
 
+    if args.save_outputs:
+        output_dict_path = os.path.join(
+            output_directory, f'{output_name}_output_dict.pkl'
+        )
+        with open(output_dict_path, "wb") as fp:
+            pickle.dump(out, fp, protocol=pickle.HIGHEST_PROTOCOL)
+
+        logger.info(f"Model output written to {output_dict_path}...")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
