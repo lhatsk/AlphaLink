@@ -10,7 +10,8 @@ def parse_arguments():
     parser.add_argument('--cutoff',
                         help='cutoff in A',
                         required=False,
-                        default=10)
+                        default=10,
+                        type=float)
     parser.add_argument('--output',
                         help='Output CSV with distogram restraints',
                         required=True)                   
