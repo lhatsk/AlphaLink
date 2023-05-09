@@ -45,7 +45,13 @@ Distance distributions for AlphaLink can be automatically generated from restrai
      python preprocessing_distributions.py --infile restraints.csv
 ```
 
-This will generate a restraint list with distance distributions binned in 128-bin distograms that can be given to AlphaLink when run with the --distograms flag
+Where restraints.csv is a comma-separated file containing residueFrom,residueTo,meanDistance,standard deviation, distribution type (normal/log-normal). For example:
+
+    12,135,15.0,5.0,normal
+    
+For a restraint between residue 12 and 135 imposed as a normal distribution with a mean distance of 15 Angstrom and a standard deviation of 10 Angstrom.
+
+preprocessing_distributions.py will generate a restraint list with distance distributions binned in 128-bin distograms that can be given to AlphaLink when run with the --distograms flag
 
 ```
      python predict_with_crosslinks.py --distograms --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt 7K3N_A.fasta restraints.csv uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
