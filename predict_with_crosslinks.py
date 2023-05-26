@@ -315,7 +315,7 @@ def main(args):
                 )
                 indices = subsample_msa_sequentially(msa, neff=args.neff)
                 feature_dict['msa'] = msa[indices]
-                feature_dict['deletion_matrix'] = feature_dict['deletion_matrix'][indices]
+                feature_dict['deletion_matrix_int'] = feature_dict['deletion_matrix_int'][indices]
 
             processed_feature_dict = feature_processor.process_features(
                 feature_dict, mode='predict',
