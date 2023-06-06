@@ -54,7 +54,7 @@ For a restraint between residue 12 and 135 imposed as a normal distribution with
 preprocessing_distributions.py will generate a restraint list with distance distributions binned in 128-bin distograms that can be given to AlphaLink when run with the --distograms flag
 
 ```
-     python predict_with_crosslinks.py 7K3N_A.fasta restraints.csv --distograms --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt --uniref90_database_path uniref90.fasta --mgnify_database_path mgy_clusters.fa --pdb70_database_path pdb70/pdb70 pdb_mmcif/mmcif_files --uniclust30_database_path uniclust30_2018_08/uniclust30_2018_08
+     python predict_with_crosslinks.py 7K3N_A.fasta restraints.csv --distograms --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt --uniref90_database_path uniref90.fasta --mgnify_database_path mgy_clusters.fa --pdb70_database_path pdb70/pdb70 --uniclust30_database_path uniclust30_2018_08/uniclust30_2018_08
 ```
 ## MSA subsampling
 
@@ -65,13 +65,13 @@ MSAs can be subsampled to a given Neff with --neff.
 AlphaLink expects a FASTA file containing a single sequence, the crosslinking MS residue pairs, and databases for template/ MSA search, [see also OpenFold Inference](https://github.com/aqlaboratory/openfold#inference).
 
 ```
-python predict_with_crosslinks.py 7K3N_A.fasta photoL.csv --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt --uniref90_database_path uniref90.fasta --mgnify_database_path mgy_clusters.fa --pdb70_database_path pdb70/pdb70 pdb_mmcif/mmcif_files --uniclust30_database_path uniclust30_2018_08/uniclust30_2018_08
+python predict_with_crosslinks.py 7K3N_A.fasta photoL.csv --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt --uniref90_database_path uniref90.fasta --mgnify_database_path mgy_clusters.fa --pdb70_database_path pdb70/pdb70 --uniclust30_database_path uniclust30_2018_08/uniclust30_2018_08
 ```
 
 MSA generation can be skipped if there are precomputed alignments:
 
 ```
-python predict_with_crosslinks.py 7K3N_A.fasta photoL.csv --use_precomputed_alignments msa/ --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt  --uniref90_database_path uniref90.fasta --mgnify_database_path mgy_clusters.fa --pdb70_database_path pdb70/pdb70 pdb_mmcif/mmcif_files --uniclust30_database_path uniclust30_2018_08/uniclust30_2018_08
+python predict_with_crosslinks.py 7K3N_A.fasta photoL.csv --use_precomputed_alignments msa/ --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt  --uniref90_database_path uniref90.fasta --mgnify_database_path mgy_clusters.fa --pdb70_database_path pdb70/pdb70 --uniclust30_database_path uniclust30_2018_08/uniclust30_2018_08
 ```
 
 or with precomputed features (pickle) with --features
