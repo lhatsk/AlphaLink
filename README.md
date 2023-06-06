@@ -45,7 +45,12 @@ AlphaLink expects a folder with FASTA file(s) and the crosslinking MS restraint 
 
 ```
 python3  predict_with_crosslinks.py nsp1/ nsp1/photoL_distogram.pt --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_distogram_1.0.pt
-python predict_with_crosslinks.py --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt 7K3N_A.fasta photoL.csv uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
+python predict_with_crosslinks.py --checkpoint_path resources/AlphaLink_params/finetuning_model_5_ptm_CACA_10A.pt --uniref90_database_path uniref90.fasta --mgnify_database_path mgy_clusters.fa --pdb70_database_path pdb70/pdb70 --uniclust30_database_path uniclust30_2018_08/uniclust30_2018_08
+
+
+
+
+uniref90.fasta mgy_clusters.fa pdb70/pdb70 pdb_mmcif/mmcif_files uniclust30_2018_08/uniclust30_2018_08
 ```
 
 MSA generation can be skipped if there are precomputed alignments:
