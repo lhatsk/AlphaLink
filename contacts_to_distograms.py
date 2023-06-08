@@ -35,6 +35,9 @@ def main():
 
     contacts = np.loadtxt(args.csv)
 
+    if len(contacts.shape) == 1:
+        contacts = np.array([contacts])
+
     with open(args.output, 'w') as f:
         for i,j,fdr in contacts:
             line = [i,j]
