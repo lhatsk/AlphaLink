@@ -519,7 +519,7 @@ if __name__ == "__main__":
         help="""Path to OpenFold checkpoint (.pt file)"""
     )
     parser.add_argument(
-        "--save_outputs", action="store_true", default=False,
+        "--save_outputs", action="store_true", default=True,
         help="Whether to save all model outputs, including embeddings, etc."
     )
     parser.add_argument(
