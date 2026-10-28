@@ -80,8 +80,7 @@ or with precomputed features (pickle) with --features
 
 Can be downloaded here: 
 
-https://www.dropbox.com/s/8npy4d6q86eqpfn/finetuning_model_5_ptm_CACA_10A.pt.gz?dl=0 
-https://www.dropbox.com/s/5jmb8pxmt5rr751/finetuning_model_5_ptm_distogram.pt.gz?dl=0
+https://doi.org/10.5281/zenodo.23726555
 
 They need to be unpacked (gunzip).
 
